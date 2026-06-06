@@ -1,11 +1,10 @@
 /**
  * IndexedDB 数据库配置 (使用 Dexie.js)
- * 存储：提示词、生成历史、用户设置、笔记、模板、视频历史、作品库、用户案例
+ * 存储：生成历史、模板、视频历史、作品库、用户案例
  */
 
 import Dexie, { type Table } from 'dexie'
-import type { Prompt, History, PromptTemplate, VideoHistory, GalleryItem, VideoTemplate } from '../types'
-import type { Note } from '../types/history'
+import type { History, PromptTemplate, VideoHistory, VideoTemplate } from '../types'
 
 export interface UserCase {
   id?: number
@@ -30,18 +29,15 @@ export interface UserCase {
 }
 
 class AppDatabase extends Dexie {
-  prompts!: Table<Prompt, number>
   history!: Table<History, number>
-  notes!: Table<Note, number>
   templates!: Table<PromptTemplate, number>
   videoHistory!: Table<VideoHistory, number>
-  gallery!: Table<GalleryItem, number>
   videoTemplates!: Table<VideoTemplate, number>
   userCases!: Table<UserCase, number>
 
   constructor() {
     super('AIDrawingStudio')
-    
+
     this.version(7).stores({
       prompts: '++id, title, content, *tags, category, createdAt, updatedAt',
       history: '++id, prompt, model, size, imageUrl, providerId, *tags, isFavorite, rating, createdAt',
@@ -52,6 +48,28 @@ class AppDatabase extends Dexie {
       videoTemplates: '++id, name, category, isOfficial, *tags, createdAt, updatedAt',
       userCases: '++id, name, category, *tags, createdAt'
     })
+
+    this.version(8).stores({
+      prompts: null,
+      history: '++id, prompt, model, size, imageUrl, providerId, *tags, isFavorite, rating, createdAt',
+      notes: null,
+      templates: '++id, name, content, category, isOfficial, *tags, createdAt, updatedAt',
+      videoHistory: '++id, prompt, model, duration, resolution, videoUrl, sourceImageId, providerId, *tags, isFavorite, rating, createdAt',
+      gallery: '++id, type, itemId, prompt, *tags, isFavorite, createdAt',
+      videoTemplates: '++id, name, category, isOfficial, *tags, createdAt, updatedAt',
+      userCases: '++id, name, category, *tags, createdAt'
+    })
+
+    this.version(9).stores({
+      prompts: null,
+      history: '++id, prompt, model, size, imageUrl, providerId, *tags, isFavorite, rating, createdAt',
+      notes: null,
+      templates: '++id, name, content, category, isOfficial, *tags, createdAt, updatedAt',
+      videoHistory: '++id, prompt, model, duration, resolution, videoUrl, sourceImageId, providerId, *tags, isFavorite, rating, createdAt',
+      gallery: null,
+      videoTemplates: '++id, name, category, isOfficial, *tags, createdAt, updatedAt',
+      userCases: '++id, name, category, *tags, createdAt'
+    })
   }
 }
 
@@ -59,8 +77,8 @@ export const db = new AppDatabase()
 
 export async function initDatabase(): Promise<void> {
   try {
-    const count = await db.prompts.count()
-    console.log(`Database initialized with ${count} prompts`)
+    const count = await db.history.count()
+    console.log(`Database initialized with ${count} history entries`)
   } catch (error) {
     console.error('Database initialization error:', error)
     await Dexie.delete('AIDrawingStudio')

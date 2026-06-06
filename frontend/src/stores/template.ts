@@ -1,15 +1,14 @@
 /**
  * 提示词模板状态管理
- * 统一管理官方模板和用户模板
+ * 官方模板从后端 API (SQLite) 获取，用户模板存储在本地 IndexedDB
  */
 
 import { defineStore } from 'pinia'
 import { ref, computed, toRaw } from 'vue'
+import axios from 'axios'
 import { db } from '../db'
+import { config } from '../config'
 import type { PromptTemplate, TemplateFormData, TemplateCategory } from '../types'
-import { workTemplates } from '../data/workTemplates'
-
-const OFFICIAL_TEMPLATES_KEY = 'ai_studio_official_templates_initialized'
 
 export const useTemplateStore = defineStore('template', () => {
   const templates = ref<PromptTemplate[]>([])
@@ -18,11 +17,11 @@ export const useTemplateStore = defineStore('template', () => {
   const showModal = ref(false)
   const editingTemplate = ref<PromptTemplate | null>(null)
 
-  const officialTemplates = computed(() => 
+  const officialTemplates = computed(() =>
     templates.value.filter(t => t.isOfficial)
   )
 
-  const userTemplates = computed(() => 
+  const userTemplates = computed(() =>
     templates.value.filter(t => !t.isOfficial)
   )
 
@@ -46,55 +45,41 @@ export const useTemplateStore = defineStore('template', () => {
   })
 
   async function load(): Promise<void> {
+    // 从 API 获取官方模板
+    let officialData: PromptTemplate[] = []
+    try {
+      const baseURL = config.apiBaseUrl
+      const res = await axios.get(`${baseURL}/api/work-templates`)
+      const items = res.data || []
+      officialData = items.map((t: Record<string, unknown>) => ({
+        name: String(t.name || t.title || ''),
+        content: String(t.prompt || ''),
+        category: String(t.category || 'general') as TemplateCategory,
+        tags: Array.isArray(t.tags) ? [...t.tags] : [],
+        isOfficial: true,
+        negativePrompt: String(t.negativePrompt || ''),
+        recommendedSize: String(t.recommendedSize || t.size || ''),
+        tips: Array.isArray(t.tips) ? [...t.tips] : [],
+        placeholders: extractPlaceholders(String(t.prompt || '')),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }))
+    } catch (e) {
+      console.warn('Failed to load official templates from API:', e)
+    }
+
+    // 从 IndexedDB 获取用户模板
     const userTemplatesData = await db.templates
       .where('isOfficial')
       .equals(0)
       .toArray()
-    
-    const officialFromDb = await db.templates
-      .where('isOfficial')
-      .equals(1)
-      .toArray()
 
-    const initialized = localStorage.getItem(OFFICIAL_TEMPLATES_KEY)
-    
-    if (!initialized) {
-      await initOfficialTemplates()
-      templates.value = [...convertWorkTemplates(), ...userTemplatesData]
-    } else {
-      templates.value = [...officialFromDb, ...userTemplatesData]
-    }
-  }
-
-  function convertWorkTemplates(): PromptTemplate[] {
-    return workTemplates.map(t => ({
-      name: t.name,
-      content: t.prompt,
-      category: t.category as TemplateCategory,
-      tags: [...t.tags],
-      isOfficial: true,
-      negativePrompt: t.negativePrompt,
-      recommendedSize: t.recommendedSize,
-      tips: [...t.tips],
-      placeholders: extractPlaceholders(t.prompt),
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }))
+    templates.value = [...officialData, ...userTemplatesData]
   }
 
   function extractPlaceholders(content: string): string[] {
     const matches = content.match(/\[([A-Z_]+)\]/g)
     return matches ? [...new Set(matches.map(m => m.slice(1, -1)))] : []
-  }
-
-  async function initOfficialTemplates(): Promise<void> {
-    const officialData = convertWorkTemplates()
-    
-    for (const template of officialData) {
-      await db.templates.add(template)
-    }
-    
-    localStorage.setItem(OFFICIAL_TEMPLATES_KEY, 'true')
   }
 
   async function add(data: TemplateFormData): Promise<void> {

@@ -1,6 +1,6 @@
 /**
  * 历史记录状态管理
- * 支持收藏、评分、标签、笔记等增强功能
+ * 支持收藏、评分、标签等增强功能
  */
 
 import { defineStore } from 'pinia'
@@ -8,7 +8,6 @@ import { ref, computed, toRaw } from 'vue'
 import { db } from '../db'
 import { config } from '../config'
 import type { History } from '../types'
-import type { Note } from '../types/history'
 
 export const useHistoryStore = defineStore('history', () => {
   const items = ref<History[]>([])
@@ -91,20 +90,17 @@ export const useHistoryStore = defineStore('history', () => {
 
   async function remove(id: number): Promise<void> {
     await db.history.delete(id)
-    await db.notes.where('targetId').equals(id).delete()
     items.value = items.value.filter(i => i.id !== id)
   }
 
   async function removeMany(ids: number[]): Promise<void> {
     await Promise.all(ids.map(id => db.history.delete(id)))
-    await db.notes.where('targetId').anyOf(ids).delete()
     const idSet = new Set(ids)
     items.value = items.value.filter(i => !idSet.has(i.id!))
   }
 
   async function clear(): Promise<void> {
     await db.history.clear()
-    await db.notes.clear()
     items.value = []
   }
 
@@ -141,46 +137,6 @@ export const useHistoryStore = defineStore('history', () => {
 
   async function setTags(id: number, tags: string[]): Promise<void> {
     await update(id, { tags })
-  }
-
-  async function setNotes(id: number, notes: string): Promise<void> {
-    await update(id, { notes })
-  }
-
-  async function getNotes(historyId: number): Promise<Note[]> {
-    return db.notes
-      .where('targetId')
-      .equals(historyId)
-      .toArray()
-  }
-
-  async function addNote(note: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>): Promise<number> {
-    const now = new Date()
-    const id = await db.notes.add({
-      targetType: note.targetType,
-      targetId: note.targetId,
-      title: note.title,
-      content: note.content,
-      tags: [...toRaw(note.tags)],
-      createdAt: now,
-      updatedAt: now
-    })
-    return id as number
-  }
-
-  async function updateNote(id: number, content: string, tags?: string[]): Promise<void> {
-    const updateData: Partial<Note> = {
-      content,
-      updatedAt: new Date()
-    }
-    if (tags !== undefined) {
-      updateData.tags = [...toRaw(tags)]
-    }
-    await db.notes.update(id, updateData)
-  }
-
-  async function deleteNote(id: number): Promise<void> {
-    await db.notes.delete(id)
   }
 
   async function searchByTag(tag: string): Promise<History[]> {
@@ -229,11 +185,6 @@ export const useHistoryStore = defineStore('history', () => {
     toggleFavorite,
     setRating,
     setTags,
-    setNotes,
-    getNotes,
-    addNote,
-    updateNote,
-    deleteNote,
     searchByTag,
     searchByKeyword,
     setDetailItem,
