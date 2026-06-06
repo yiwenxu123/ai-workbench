@@ -173,6 +173,50 @@ const tools = [
       required: ["prompt", "llm_endpoint", "llm_api_key"],
     },
   },
+  {
+    name: "evaluate_knowledge",
+    description: "评估一条知识条目的质量，从专业性、实用性、创新性、详细度四个维度打分。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "知识条目内容" },
+        type: { type: "string", enum: ["term", "formula", "case", "industry", "negative_pack"], default: "term", description: "知识类型" },
+        scene: { type: "string", description: "目标场景（可选）" },
+        llm_endpoint: { type: "string", description: "LLM API端点" },
+        llm_api_key: { type: "string", description: "LLM API密钥" },
+        llm_model: { type: "string", default: "deepseek-chat" },
+      },
+      required: ["content", "llm_endpoint", "llm_api_key"],
+    },
+  },
+  {
+    name: "deduplicate_knowledge",
+    description: "检查新知识条目是否与已有知识重复，返回决策建议（new/merge/skip）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        item: { type: "object", description: "待检查的知识条目" },
+        target_type: { type: "string", default: "knowledge", description: "目标知识类型" },
+        llm_endpoint: { type: "string", description: "LLM API端点（可选）" },
+        llm_api_key: { type: "string", description: "LLM API密钥（可选）" },
+        llm_model: { type: "string", default: "deepseek-chat" },
+      },
+      required: ["item"],
+    },
+  },
+  {
+    name: "save_knowledge",
+    description: "将知识条目保存到知识库，支持新增和合并更新。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        item: { type: "object", description: "知识条目" },
+        operation: { type: "string", enum: ["new", "merge"], default: "new", description: "操作类型" },
+        merge_target_id: { type: "string", description: "合并目标ID（merge时必填）" },
+      },
+      required: ["item"],
+    },
+  },
 ];
 
 const resources = [
@@ -217,6 +261,14 @@ const prompts = [
     name: "image_edit_instruction",
     description: "把模糊修改需求改写为清晰图片编辑指令。",
     arguments: [{ name: "change", description: "用户想修改的内容", required: true }],
+  },
+  {
+    name: "extract_tips",
+    description: "引导 Agent 从文章中提取 AI 生图技巧的完整工作流。",
+    arguments: [
+      { name: "content", description: "文章内容", required: true },
+      { name: "source_url", description: "来源 URL（可选）", required: false },
+    ],
   },
 ];
 
@@ -310,6 +362,29 @@ async function callTool(name, args) {
       llm_model: llm_model || "deepseek-chat",
     });
   }
+  if (name === "evaluate_knowledge") {
+    const { content, type, scene, llm_endpoint, llm_api_key, llm_model } = args;
+    return post("/api/knowledge/evaluate", {
+      content, type: type || "term", scene: scene || "general",
+      llm_endpoint, llm_api_key, llm_model: llm_model || "deepseek-chat",
+    });
+  }
+  if (name === "deduplicate_knowledge") {
+    const { item, target_type, llm_endpoint, llm_api_key, llm_model } = args;
+    return post("/api/knowledge/deduplicate", {
+      item, target_type: target_type || "knowledge",
+      llm_endpoint: llm_endpoint || "", llm_api_key: llm_api_key || "",
+      llm_model: llm_model || "deepseek-chat",
+    });
+  }
+  if (name === "save_knowledge") {
+    const { item, operation, merge_target_id } = args;
+    const items = operation === "merge" && merge_target_id
+      ? [{ ...item, id: merge_target_id }]
+      : [item];
+    const replace_ids = operation === "merge" && merge_target_id ? [merge_target_id] : [];
+    return post("/api/ingest/save", { target_type: "knowledge", items, replace_ids });
+  }
   throw new Error(`Unknown tool: ${name}`);
 }
 
@@ -338,6 +413,22 @@ function buildPrompt(name, args) {
   }
   if (name === "image_edit_instruction") {
     return `请把这个图片修改需求改写为清晰编辑指令：${args.change || ""}\n要求说明保留什么、修改什么、避免什么。`;
+  }
+  if (name === "extract_tips") {
+    const sourceInfo = args.source_url ? `\n来源：${args.source_url}` : "";
+    return `请从以下文章中提取所有 AI 绘图/视频相关的技巧和知识。${sourceInfo}
+
+提取要求：
+1. 识别术语（term）：专业词汇及其解释
+2. 识别公式（formula）：提示词结构公式
+3. 识别案例（case）：完整提示词+参数+效果描述
+4. 识别行业知识（industry）：场景化的方法论
+5. 识别负面词包（negative_pack）：常用的负面提示词组合
+
+文章内容：
+${args.content || ""}
+
+请输出结构化的提取结果。`;
   }
   throw new Error(`Unknown prompt: ${name}`);
 }
@@ -416,7 +507,7 @@ if (MCP_TRANSPORT === "sse") {
         status: "ok",
         name: "ai-workbench-mcp",
         transport: "sse",
-        tools: 10,
+        tools: tools.length,
         activeSessions: activeTransports.size,
         connect: `GET ${MCP_PATH}`,
       }));

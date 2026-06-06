@@ -1,9 +1,9 @@
 /**
  * MCP Server 端到端验证测试
  * 验证：
- * 1. 10 个工具的注册和参数定义
+ * 1. 13 个工具的注册和参数定义
  * 2. 4 个资源的 URI 定义
- * 3. 3 个 Prompt 的定义
+ * 3. 4 个 Prompt 的定义
  * 4. 参数命名一致性（source_image 而非 image_url）
  *
  * 运行：node mcp-server/test.js
@@ -180,6 +180,50 @@ const tools = [
       required: ['prompt', 'llm_endpoint', 'llm_api_key'],
     },
   },
+  {
+    name: 'evaluate_knowledge',
+    description: '评估一条知识条目的质量，从专业性、实用性、创新性、详细度四个维度打分。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: '知识条目内容' },
+        type: { type: 'string', enum: ['term', 'formula', 'case', 'industry', 'negative_pack'], default: 'term', description: '知识类型' },
+        scene: { type: 'string', description: '目标场景（可选）' },
+        llm_endpoint: { type: 'string', description: 'LLM API端点' },
+        llm_api_key: { type: 'string', description: 'LLM API密钥' },
+        llm_model: { type: 'string', default: 'deepseek-chat' },
+      },
+      required: ['content', 'llm_endpoint', 'llm_api_key'],
+    },
+  },
+  {
+    name: 'deduplicate_knowledge',
+    description: '检查新知识条目是否与已有知识重复，返回决策建议（new/merge/skip）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        item: { type: 'object', description: '待检查的知识条目' },
+        target_type: { type: 'string', default: 'knowledge', description: '目标知识类型' },
+        llm_endpoint: { type: 'string', description: 'LLM API端点（可选）' },
+        llm_api_key: { type: 'string', description: 'LLM API密钥（可选）' },
+        llm_model: { type: 'string', default: 'deepseek-chat' },
+      },
+      required: ['item'],
+    },
+  },
+  {
+    name: 'save_knowledge',
+    description: '将知识条目保存到知识库，支持新增和合并更新。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        item: { type: 'object', description: '知识条目' },
+        operation: { type: 'string', enum: ['new', 'merge'], default: 'new', description: '操作类型' },
+        merge_target_id: { type: 'string', description: '合并目标ID（merge时必填）' },
+      },
+      required: ['item'],
+    },
+  },
 ]
 
 const resources = [
@@ -193,13 +237,14 @@ const prompts = [
   { name: 'beginner_prompt_rewrite', description: '把小白的一句话需求改写为适合 AI 绘图的提示词。' },
   { name: 'image_to_video_script', description: '把静态图片创意扩展为图生视频镜头脚本。' },
   { name: 'image_edit_instruction', description: '把模糊修改需求改写为清晰图片编辑指令。' },
+  { name: 'extract_tips', description: '引导 Agent 从文章中提取 AI 生图技巧的完整工作流。' },
 ]
 
 // ========== 测试用例 ==========
 
 // 工具数量测试
-test('应注册 10 个工具', () => {
-  assert.strictEqual(tools.length, 10)
+test('应注册 13 个工具', () => {
+  assert.strictEqual(tools.length, 13)
 })
 
 // 所有工具必须有 name
@@ -254,8 +299,8 @@ test('所有资源 URI 应以 ai-workbench:// 开头', () => {
 })
 
 // Prompt 数量测试
-test('应注册 3 个 Prompt', () => {
-  assert.strictEqual(prompts.length, 3)
+test('应注册 4 个 Prompt', () => {
+  assert.strictEqual(prompts.length, 4)
 })
 
 // API_BASE 环境变量可配置测试
