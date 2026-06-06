@@ -12,6 +12,7 @@ backend/.env
 *.egg-info/
 dist/
 build/
+*.db
 
 # Node
 node_modules/
