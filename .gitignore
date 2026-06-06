@@ -49,4 +49,5 @@ logs/
 # Misc
 *.tgz
 *.tar.gz
+frontend/frontend/
 
