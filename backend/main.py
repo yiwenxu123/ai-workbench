@@ -21,6 +21,8 @@ from routers.content import router as content_router
 
 load_dotenv()
 
+from knowledge_db import init_db as init_knowledge_db
+
 app = FastAPI(
     title="AI绘图工作台 API",
     description="API代理服务 - 支持图像生成、视频生成、图片编辑",
@@ -97,6 +99,14 @@ async def root():
 
 
 # ── Include Routers ──────────────────────────────────────────────────
+
+@app.on_event("startup")
+async def startup():
+    init_knowledge_db()
+    # 启动 embedding 后台 worker
+    import asyncio
+    from embedding_worker import run_worker
+    asyncio.create_task(run_worker())
 
 app.include_router(generation_router)
 app.include_router(content_router)

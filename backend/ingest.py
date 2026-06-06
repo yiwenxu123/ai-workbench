@@ -1,6 +1,6 @@
 """
 AI 内容提取服务
-通过 LLM 将网页文章/粘贴文本自动解析为结构化的案例、知识库或模板条目，并追加到对应 JSON 文件。
+通过 LLM 将网页文章/粘贴文本自动解析为结构化的案例、知识库或模板条目，并写入 SQLite。
 支持智能去重对比：本地候选匹配 + LLM 质量对比。
 """
 
@@ -9,19 +9,14 @@ import re
 import httpx
 import ipaddress
 import socket
-from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
-from json_store import load_json_list, write_json_atomic
-
-DATA_DIR = Path(__file__).parent / "data"
-
-FILE_MAP = {
-    "cases": "cases.json",
-    "knowledge": "knowledge.json",
-    "templates": "templates.json",
-}
+from knowledge_db import (
+    knowledge_list_all, knowledge_upsert,
+    templates_list_all, templates_upsert,
+    cases_list_all, cases_upsert,
+)
 
 ALLOWED_FETCH_SCHEMES = {"http", "https"}
 ALLOWED_CONTENT_TYPES = {"text/html", "text/plain", "application/xhtml+xml"}
@@ -179,11 +174,14 @@ def _parse_json_from_text(text: str) -> list[dict]:
 # ═══════════════════════════════════════════════════════════════════════
 
 def _load_existing(target_type: str) -> list[dict]:
-    """加载指定类型的现有数据。"""
-    filename = FILE_MAP.get(target_type)
-    if not filename:
-        return []
-    return load_json_list(DATA_DIR / filename)
+    """从 SQLite 加载指定类型的现有数据。"""
+    if target_type == "knowledge":
+        return knowledge_list_all()
+    elif target_type == "templates":
+        return templates_list_all()
+    elif target_type == "cases":
+        return cases_list_all()
+    return []
 
 
 def _text_similarity(a: str, b: str) -> float:
@@ -515,19 +513,18 @@ def _validate_fetch_url(url: str) -> None:
 
 def save_items(target_type: str, items: list[dict], replace_ids: list[str] = None) -> dict:
     """
-    将提取的条目保存到对应 JSON 文件。
-    - 纯新增的条目直接追加
-    - replace_ids 中的 id 会替换已有同 id 条目
+    将提取的条目保存到 SQLite。
+    - 纯新增的条目直接写入（upsert）
+    - replace_ids 中的 id 会强制替换
     返回 {"added": n, "replaced": n}
     """
-    filename = FILE_MAP.get(target_type)
-    if not filename:
+    upsert_fn = {
+        "knowledge": knowledge_upsert,
+        "templates": templates_upsert,
+        "cases": cases_upsert,
+    }.get(target_type)
+    if not upsert_fn:
         raise ValueError(f"不支持的目标类型: {target_type}")
-
-    filepath = DATA_DIR / filename
-
-    # 读取现有数据
-    existing = load_json_list(filepath)
 
     # 清理 _comparison 元数据
     clean_items = []
@@ -536,24 +533,20 @@ def save_items(target_type: str, items: list[dict], replace_ids: list[str] = Non
         clean_items.append(clean)
 
     replace_id_set = set(replace_ids or [])
-    existing_id_map = {item.get("id"): idx for idx, item in enumerate(existing)}
+    existing = _load_existing(target_type)
+    existing_ids = {item.get("id") for item in existing}
 
     added = 0
     replaced = 0
 
     for item in clean_items:
         item_id = item.get("id")
-        if item_id in replace_id_set and item_id in existing_id_map:
-            # 替换已有条目
-            existing[existing_id_map[item_id]] = item
+        if item_id in replace_id_set:
+            upsert_fn(item)
             replaced += 1
-        elif item_id not in existing_id_map:
-            # 新增
-            existing.append(item)
+        elif item_id not in existing_ids:
+            upsert_fn(item)
             added += 1
         # else: 已存在且不在替换列表中，跳过
-
-    if added > 0 or replaced > 0:
-        write_json_atomic(filepath, existing)
 
     return {"added": added, "replaced": replaced}

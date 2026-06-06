@@ -215,3 +215,20 @@ class KnowledgeSearchResponse(BaseModel):
     total: int = 0
     query: str = ""
     scene: str = ""
+
+
+class EvaluateKnowledgeRequest(BaseModel):
+    content: str = Field(..., max_length=10000, description="知识条目内容")
+    type: str = Field(default="term", description="知识类型: term/formula/case/industry/negative_pack")
+    scene: str = Field(default="general", max_length=50, description="目标场景（可选）")
+    llm_endpoint: str = Field(..., description="LLM API端点")
+    llm_api_key: str = Field(..., description="LLM API密钥")
+    llm_model: str = Field(default="deepseek-chat", description="LLM模型名称")
+
+
+class DeduplicateKnowledgeRequest(BaseModel):
+    item: dict = Field(..., description="待检查的知识条目")
+    target_type: str = Field(default="knowledge", description="目标知识类型")
+    llm_endpoint: str = Field(default="", description="LLM API端点（可选，不提供则仅做本地匹配）")
+    llm_api_key: str = Field(default="", description="LLM API密钥（可选）")
+    llm_model: str = Field(default="deepseek-chat", description="LLM模型名称")

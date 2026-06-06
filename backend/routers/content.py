@@ -1,26 +1,25 @@
 """
 内容管理路由：案例、模板、知识库、提示词优化
+数据源：SQLite (knowledge.db) — 替代原 JSON 文件
 """
+import json
 import re
 import time
 
 import httpx
 from fastapi import APIRouter
-from config import DATA_DIR
-from json_store import load_json_list, write_json_atomic
+from knowledge_db import (
+    knowledge_list_all, knowledge_search, knowledge_upsert,
+    templates_list_all, templates_list_by_task,
+    cases_list_all, cases_upsert,
+)
 from models import (
     CreateCaseRequest, KnowledgeEntry, KnowledgeSearchRequest,
     KnowledgeSearchResponse, OptimizePromptRequest,
+    EvaluateKnowledgeRequest, DeduplicateKnowledgeRequest,
 )
 
 router = APIRouter()
-
-
-# ── JSON 文件辅助 ──────────────────────────────────────────────────────
-
-
-def _load_json(filename: str) -> list:
-    return load_json_list(DATA_DIR / filename)
 
 
 # ── Cases ──────────────────────────────────────────────────────────────
@@ -28,12 +27,11 @@ def _load_json(filename: str) -> list:
 
 @router.get("/api/cases", summary="获取精选案例库 (Skill)")
 async def get_cases():
-    return _load_json("cases.json")
+    return cases_list_all()
 
 
 @router.post("/api/cases", summary="添加用户创作案例")
 async def create_case(request: CreateCaseRequest):
-    cases = _load_json("cases.json")
     now = time.strftime("%Y-%m-%d")
     new_case = {
         "id": f"case-user-{int(time.time())}",
@@ -43,21 +41,13 @@ async def create_case(request: CreateCaseRequest):
         "prompt": request.prompt,
         "negativePrompt": request.negativePrompt,
         "model": request.model or "",
-        "parameters": {},
+        "size": request.size or "",
         "tips": request.tips,
         "tags": request.tags,
-        "sourceUrl": "",
         "author": "用户创作",
         "createdAt": now,
-        "updatedAt": now,
-        "lastVerifiedAt": now,
-        "reviewStatus": "pending",
-        "qualityScore": None,
     }
-    if request.size:
-        new_case["parameters"]["size"] = request.size
-    cases.append(new_case)
-    write_json_atomic(DATA_DIR / "cases.json", cases)
+    cases_upsert(new_case)
     return {"success": True, "case": new_case, "message": "案例已收录"}
 
 
@@ -66,52 +56,46 @@ async def create_case(request: CreateCaseRequest):
 
 @router.get("/api/templates")
 async def get_templates():
-    return _load_json("templates.json")
+    return templates_list_all()
 
 
 @router.get("/api/unified-templates", summary="获取统一模板库")
 async def get_unified_templates():
+    all_templates = templates_list_all()
     unified = []
-
-    for filename, src_name, item_type in [
-        ("templates.json", "templates", "image"),
-        ("work_templates.json", "work_templates", "image"),
-        ("festival_templates.json", "festival_templates", "image"),
-        ("video_templates.json", "video_templates", "video"),
-    ]:
-        for item in _load_json(filename):
-            unified.append({
-                "id": item.get("id", ""),
-                "type": item_type,
-                "taskType": item.get("category", "通用"),
-                "audience": item.get("audience", "小白"),
-                "requiredFields": item.get("requiredFields", []),
-                "promptTemplate": item.get("prompt", ""),
-                "negativePrompt": item.get("negativePrompt", ""),
-                "recommendedModels": item.get("recommendedModels", []),
-                "examples": item.get("examples", []),
-                "source": src_name,
-                "title": item.get("title", ""),
-                "description": item.get("description", ""),
-                "updatedAt": item.get("updatedAt", "2026-05-07"),
-            })
-
+    for item in all_templates:
+        unified.append({
+            "id": item.get("id", ""),
+            "type": item.get("taskType", "image"),
+            "taskType": item.get("category", "通用"),
+            "audience": item.get("audience", "小白"),
+            "requiredFields": item.get("requiredFields", []),
+            "promptTemplate": item.get("prompt", ""),
+            "negativePrompt": item.get("negativePrompt", ""),
+            "recommendedModels": [],
+            "examples": [],
+            "source": item.get("source", ""),
+            "title": item.get("title", ""),
+            "description": item.get("description", ""),
+            "updatedAt": item.get("updatedAt", ""),
+        })
     return unified
 
 
 @router.get("/api/video-templates")
 async def get_video_templates():
-    return _load_json("video_templates.json")
+    return templates_list_by_task("video")
 
 
 @router.get("/api/work-templates")
 async def get_work_templates():
-    return _load_json("work_templates.json")
+    # 兼容旧接口：返回 source 为 work_templates 的模板
+    return [t for t in templates_list_all() if t.get("source") == "work_templates"]
 
 
 @router.get("/api/festival-templates")
 async def get_festival_templates():
-    return _load_json("festival_templates.json")
+    return [t for t in templates_list_all() if t.get("source") == "festival_templates"]
 
 
 # ── Knowledge ──────────────────────────────────────────────────────────
@@ -119,76 +103,144 @@ async def get_festival_templates():
 
 @router.get("/api/knowledge")
 async def get_knowledge():
-    return _load_json("knowledge.json")
+    return knowledge_list_all()
 
 
 @router.get("/api/knowledge/terms", summary="获取术语词典")
 async def get_knowledge_terms():
-    entries = _load_json("knowledge.json")
-    return [e for e in entries if e.get("type") == "term"]
+    return [e for e in knowledge_list_all() if e.get("type") == "term"]
 
 
 @router.get("/api/knowledge/formulas", summary="获取提示词公式库")
 async def get_knowledge_formulas():
-    entries = _load_json("knowledge.json")
-    return [e for e in entries if e.get("type") == "formula"]
+    return [e for e in knowledge_list_all() if e.get("type") == "formula"]
 
 
 @router.get("/api/knowledge/industries", summary="获取行业知识")
 async def get_knowledge_industries():
-    entries = _load_json("knowledge.json")
-    return [e for e in entries if e.get("type") == "industry"]
+    return [e for e in knowledge_list_all() if e.get("type") == "industry"]
 
 
-@router.post("/api/knowledge/search", summary="知识库智能检索")
+@router.post("/api/knowledge/search", summary="知识库智能检索 (FTS5)")
 async def search_knowledge(request: KnowledgeSearchRequest):
-    entries: list[dict] = _load_json("knowledge.json")
-    query = request.query.lower().strip()
+    query = request.query.strip()
     scene = request.scene or "general"
-    model_type = request.modelType or ""
     limit = request.limit or 10
-    type_filter = [t.lower() for t in request.types] if request.types else []
+    type_filter = [t.lower() for t in request.types] if request.types else None
 
-    def _score(entry: dict) -> float:
-        score = 0.0
-        query_terms = query.split()
-        search_text = (
-            (entry.get("title", "") + " ") +
-            (entry.get("content", "") + " ") +
-            " ".join(entry.get("tags", [])) + " " +
-            entry.get("category", "")
-        ).lower()
-
-        match_count = sum(1 for t in query_terms if t in search_text)
-        score += match_count * 2.0
-
-        scene_rel = entry.get("sceneRelevance", {})
-        if isinstance(scene_rel, dict):
-            score += scene_rel.get(scene, 0) * 5.0
-            if scene != "general" and scene_rel.get(scene, 0) > 0.5:
-                score += 2.0
-
-        score += (entry.get("quality", 1.0) - 0.5) * 1.0
-        return score
-
-    filtered = []
-    for entry in entries:
-        etype = entry.get("type", "")
-        if type_filter and etype not in type_filter:
-            continue
-        filtered.append(entry)
-
-    scored = [(e, _score(e)) for e in filtered]
-    scored.sort(key=lambda x: -x[1])
-    top = [e for e, s in scored if s > 0][:limit]
+    results = knowledge_search(query=query, scene=scene, type_filter=type_filter, limit=limit)
 
     return KnowledgeSearchResponse(
         success=True,
-        items=[KnowledgeEntry(**e) for e in top],
-        total=len(top),
+        items=[KnowledgeEntry(**e) for e in results],
+        total=len(results),
         query=request.query,
         scene=scene,
     )
+
+
+@router.post("/api/knowledge/evaluate", summary="评估知识条目质量")
+async def evaluate_knowledge(request: EvaluateKnowledgeRequest):
+    """用 LLM 从专业性、实用性、创新性、详细度四维度评估知识质量"""
+    system_prompt = """你是 AI 绘图知识库的质量评审员。
+请从以下四个维度评估知识条目质量，每个维度 1-10 分：
+1. 专业性：术语使用是否准确，内容是否专业
+2. 实用性：对实际 AI 绘图是否有指导价值
+3. 创新性：是否有独特视角或新颖见解
+4. 详细度：描述是否足够详细具体
+
+输出 JSON 格式：
+{
+  "score": 总分(1-10，四维度平均),
+  "scores": {"专业性": n, "实用性": n, "创新性": n, "详细度": n},
+  "reason": "一句话评估理由",
+  "suggestions": ["改进建议1", "改进建议2"]
+}"""
+
+    payload = {
+        "model": request.llm_model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"请评估以下{request.type}类型的知识条目：\n\n{request.content}"},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 1024,
+    }
+    headers = {"Authorization": f"Bearer {request.llm_api_key}", "Content-Type": "application/json"}
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(request.llm_endpoint, json=payload, headers=headers)
+            resp.raise_for_status()
+            result = resp.json()
+        raw_text = result["choices"][0]["message"]["content"]
+        json_match = re.search(r"\{[\s\S]*\}", raw_text)
+        if json_match:
+            parsed = json.loads(json_match.group())
+            return {"success": True, **parsed}
+        return {"success": False, "error": "无法解析 LLM 输出"}
+    except Exception as e:
+        return {"success": False, "error": f"评估失败: {str(e)}"}
+
+
+@router.post("/api/knowledge/deduplicate", summary="知识去重检查")
+async def deduplicate_knowledge(request: DeduplicateKnowledgeRequest):
+    """检查新知识条目是否与已有知识重复，返回决策建议"""
+    from ingest import find_candidates, compare_items_with_llm
+
+    existing = knowledge_list_all()
+    candidates = find_candidates(request.item, existing)
+
+    if not candidates:
+        return {
+            "success": True,
+            "decision": "new",
+            "reason": "未发现相似的已有内容",
+            "candidates": [],
+        }
+
+    # 如果提供了 LLM 配置，用 LLM 深度对比
+    if request.llm_endpoint and request.llm_api_key:
+        pairs = [{
+            "new": request.item,
+            "existing": c["existing"],
+            "match_reason": c["match_reason"],
+        } for c in candidates[:3]]
+        try:
+            verdicts = await compare_items_with_llm(
+                pairs, request.target_type,
+                request.llm_endpoint, request.llm_api_key, request.llm_model,
+            )
+            if verdicts:
+                v = verdicts[0]
+                return {
+                    "success": True,
+                    "decision": v.get("verdict", "duplicate"),
+                    "reason": v.get("reason", ""),
+                    "candidates": [{
+                        "id": c["existing"].get("id"),
+                        "title": c["existing"].get("title") or c["existing"].get("name"),
+                        "score": c["score"],
+                        "match_reason": c["match_reason"],
+                    } for c in candidates],
+                }
+        except Exception:
+            pass  # LLM 失败时降级为本地匹配
+
+    # 仅本地匹配结果
+    best = candidates[0]
+    decision = "duplicate" if best["score"] >= 0.8 else "keep_both"
+    return {
+        "success": True,
+        "decision": decision,
+        "reason": f"本地匹配度 {best['score']:.0%}，{best['match_reason']}",
+        "candidates": [{
+            "id": c["existing"].get("id"),
+            "title": c["existing"].get("title") or c["existing"].get("name"),
+            "score": c["score"],
+            "match_reason": c["match_reason"],
+        } for c in candidates],
+    }
 
 
 # ── Prompt Optimization ────────────────────────────────────────────────
@@ -215,21 +267,8 @@ async def optimize_prompt(request: OptimizePromptRequest):
     scene_desc = scene_map.get(request.scene, scene_map["general"])
     style_desc = style_map.get(request.style, style_map["general"])
 
-    # 1. 搜索知识库
-    entries = _load_json("knowledge.json")
-    query_terms = request.prompt.lower().split()
-
-    def kb_score(e):
-        s = 0.0
-        text = (e.get("title", "") + " " + e.get("content", "") + " " + " ".join(e.get("tags", []))).lower()
-        s += sum(1 for t in query_terms if t in text) * 2.0
-        s += e.get("sceneRelevance", {}).get(request.scene, 0) * 5.0
-        s += (e.get("quality", 1.0) - 0.5)
-        return s
-
-    scored = [(e, kb_score(e)) for e in entries]
-    scored.sort(key=lambda x: -x[1])
-    top_kb = [e for e, s in scored if s > 0][:10]
+    # 1. 使用 FTS5 搜索知识库
+    top_kb = knowledge_search(query=request.prompt, scene=request.scene, limit=10)
 
     # 2. 构建 system prompt
     kb_parts = []
@@ -328,3 +367,19 @@ async def optimize_prompt(request: OptimizePromptRequest):
         return {"success": False, "error": "无法解析 LLM 输出"}
     except Exception as e:
         return {"success": False, "error": f"优化失败: {str(e)}"}
+
+
+# ── Embedding 管理 ────────────────────────────────────────────────────
+
+
+@router.get("/api/embedding/stats", summary="查看 Embedding 状态统计")
+async def get_embedding_stats():
+    from embedding_worker import get_embedding_stats
+    return get_embedding_stats()
+
+
+@router.post("/api/embedding/process", summary="手动触发 Embedding 生成")
+async def trigger_embedding_process():
+    from embedding_worker import process_all_pending
+    result = await process_all_pending()
+    return {"success": True, **result}
