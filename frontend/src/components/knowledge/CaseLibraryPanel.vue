@@ -262,9 +262,33 @@ const formData = reactive({
   tags: [] as string[]
 })
 
+/** 将 API case 映射为 CaseExample 格式 */
+function mapApiCase(c: any): CaseExample {
+  return {
+    id: c.id || '',
+    name: c.name || '',
+    category: c.category || 'product',
+    description: c.description || '',
+    prompt: c.prompt || '',
+    negativePrompt: c.negativePrompt || c.negative_prompt || '',
+    model: c.model || '',
+    parameters: {
+      size: c.size || c.parameters?.size || '',
+      duration: c.parameters?.duration || '',
+      style: c.parameters?.style || '',
+    },
+    tips: Array.isArray(c.tips) ? c.tips : (typeof c.tips === 'string' && c.tips ? [c.tips] : []),
+    tags: Array.isArray(c.tags) ? c.tags : [],
+    videoUrl: c.videoUrl,
+    embedUrl: c.embedUrl,
+    thumbnailUrl: c.thumbnailUrl,
+    isUserCase: false,
+  }
+}
+
 const filteredCases = computed(() => {
   let cases: CaseExample[]
-  
+
   if (selectedCategory.value === 'user') {
     cases = userCases.value.map(uc => ({
       id: `user-${uc.id}`,
@@ -283,10 +307,12 @@ const filteredCases = computed(() => {
       isUserCase: true
     }))
   } else if (selectedCategory.value !== 'all') {
-    cases = (dataStore.cases || []).filter((c: any) => c.category === selectedCategory.value)
+    cases = (dataStore.cases || [])
+      .filter((c: any) => c.category === selectedCategory.value)
+      .map(mapApiCase)
   } else {
     cases = [
-      ...(dataStore.cases || []),
+      ...(dataStore.cases || []).map(mapApiCase),
       ...userCases.value.map(uc => ({
         id: `user-${uc.id}`,
         name: uc.name,
@@ -305,15 +331,15 @@ const filteredCases = computed(() => {
       }))
     ]
   }
-  
+
   if (searchText.value) {
     const query = searchText.value.toLowerCase()
-    cases = cases.filter(c => 
-      c.name.toLowerCase().includes(query) ||
-      c.description.toLowerCase().includes(query)
+    cases = cases.filter(c =>
+      (c.name || '').toLowerCase().includes(query) ||
+      (c.description || '').toLowerCase().includes(query)
     )
   }
-  
+
   return cases
 })
 

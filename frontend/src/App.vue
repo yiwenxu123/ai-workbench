@@ -90,10 +90,7 @@
                 <n-tab-pane name="history">
                   <template #tab><div class="tab-label"><n-icon><ImagesOutline /></n-icon>作品</div></template>
                 </n-tab-pane>
-                <n-tab-pane name="notes">
-                  <template #tab><div class="tab-label"><n-icon><DocumentTextOutline /></n-icon>笔记</div></template>
-                </n-tab-pane>
-                <n-tab-pane v-if="adminMode" name="ingest">
+                <n-tab-pane name="ingest">
                   <template #tab><div class="tab-label"><n-icon><CloudDownloadOutline /></n-icon>入库</div></template>
                 </n-tab-pane>
               </n-tabs>
@@ -110,10 +107,7 @@
                 <div v-show="rightTab === 'history'">
                   <GalleryPanel @convert-to-video="handleGenerateVideo" @edit-image="handleEditImageFromGallery" />
                 </div>
-                <div v-show="rightTab === 'notes'">
-                  <NotesPanel />
-                </div>
-                <div v-if="adminMode" v-show="rightTab === 'ingest'">
+                <div v-show="rightTab === 'ingest'">
                   <ContentIngest />
                 </div>
               </div>
@@ -131,11 +125,11 @@
 import { ref, computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue'
 import { NConfigProvider, NDialogProvider, NMessageProvider, NLayout, NLayoutHeader, NLayoutContent, NButton, NIcon, NTabs, NTabPane, NDrawer, NDrawerContent } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
-import { useConfigStore, useHistoryStore, usePromptStore, useGeneratorStore, useProviderStore, useVideoStore, useEditorStore, useDataStore } from './stores'
+import { useConfigStore, useHistoryStore, useGeneratorStore, useProviderStore, useVideoStore, useEditorStore, useDataStore } from './stores'
 import {
   SettingsOutline, GridOutline, CloseOutline,
   ImageOutline, FilmOutline, ColorWandOutline,
-  LibraryOutline, BookOutline, ScanOutline, ImagesOutline, DocumentTextOutline, CloudDownloadOutline
+  LibraryOutline, BookOutline, ScanOutline, ImagesOutline, CloudDownloadOutline
 } from '@vicons/ionicons5'
 import { Sparkles } from 'lucide-vue-next'
 import GeneratePanel from './components/GeneratePanel.vue'
@@ -146,14 +140,12 @@ const TemplateCenter = defineAsyncComponent(() => import('./components/TemplateC
 const VideoPanel = defineAsyncComponent(() => import('./components/VideoPanel.vue'))
 const ImageEditor = defineAsyncComponent(() => import('./components/ImageEditor.vue'))
 const GalleryPanel = defineAsyncComponent(() => import('./components/GalleryPanel.vue'))
-const NotesPanel = defineAsyncComponent(() => import('./components/NotesPanel.vue'))
 const ImageAnalyzer = defineAsyncComponent(() => import('./components/ImageAnalyzer.vue'))
 const ConfigModal = defineAsyncComponent(() => import('./components/ConfigModal.vue'))
 const ContentIngest = defineAsyncComponent(() => import('./components/admin/ContentIngest.vue'))
 
 const configStore = useConfigStore()
 const historyStore = useHistoryStore()
-const promptStore = usePromptStore()
 const generatorStore = useGeneratorStore()
 const providerStore = useProviderStore()
 const videoStore = useVideoStore()
@@ -163,7 +155,6 @@ const dataStore = useDataStore()
 const isInitializing = ref(true)
 const mainTab = ref('image')
 const rightTab = ref('templates')
-const adminMode = ref(localStorage.getItem('ai_studio_admin') === 'true')
 
 const SK = 'ai_studio_panel_'
 const panelOpen = ref(localStorage.getItem(SK + 'open') === 'true')
@@ -230,7 +221,7 @@ onMounted(async () => {
   providerStore.init()
   try {
     await initDatabase()
-    await Promise.all([configStore.loadServerConfig(), historyStore.load(), promptStore.load(), dataStore.loadAll()])
+    await Promise.all([configStore.loadServerConfig(), historyStore.load(), dataStore.loadAll()])
   } catch (error) { console.error('App initialization error:', error) }
   // 确保骨架屏至少显示 600ms，避免闪烁
   await new Promise(r => setTimeout(r, 600))

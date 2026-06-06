@@ -31,244 +31,149 @@
               {{ item.label || (item.ready ? '已配置' : '未配置') }}
             </n-tag>
           </button>
-          
-          <div class="sidebar-divider"></div>
-          
-          <button
-            type="button"
-            class="sidebar-item"
-            :class="{ active: activeTab === 'admin' }"
-            @click="activeTab = 'admin'"
-          >
-            <div class="sidebar-item-content">
-              <n-icon :component="Settings" class="capability-icon" />
-              <div class="capability-text">
-                <span class="capability-title">高级管理</span>
-                <span class="capability-desc">内容维护与入库</span>
-              </div>
-            </div>
-          </button>
         </div>
 
         <div class="config-content-area">
-          <div v-show="activeTab === 'providers'">
-            <n-alert type="info" class="mb-3">
-              用于电商主图、海报、PPT 配图等图片生成任务，首次使用只需要配置这一项。
-            </n-alert>
-            <ProviderManager />
-          </div>
-          
-          <div v-show="activeTab === 'video'">
-            <n-alert type="info" class="mb-3">
-              用于文生视频、图生视频。只有需要短视频能力时再配置。
-            </n-alert>
-            
-            <n-list bordered>
-              <n-list-item v-for="preset in videoPresets" :key="preset.type">
-                <n-thing :title="preset.name">
-                  <template #avatar>
-                    <n-tag :type="preset.recommended ? 'success' : 'default'">
-                      {{ preset.recommended ? '推荐' : '可选' }}
-                    </n-tag>
-                  </template>
-                  <template #description>
-                    {{ preset.description }}
-                  </template>
-                  <template #header-extra>
-                    <n-space align="center">
-                      <n-tag v-if="isVideoConfigured(preset.type)" type="success" size="small">
-                        已配置
-                      </n-tag>
-                      <n-button
-                        size="small"
-                        :type="isVideoConfigured(preset.type) ? 'default' : 'primary'"
-                        @click="showVideoConfigModal(preset)"
-                      >
-                        {{ isVideoConfigured(preset.type) ? '修改' : '配置' }}
-                      </n-button>
-                    </n-space>
-                  </template>
-                </n-thing>
-              </n-list-item>
-            </n-list>
-            
-            <div class="mt-3">
-              <n-button block dashed @click="openCustomProvider('video')">
-                + 自定义视频供应商
-              </n-button>
+          <!-- 生成能力：图像 + 视频 + 编辑 -->
+          <div v-show="activeTab === 'generation'">
+            <div class="section-block">
+              <div class="section-header">
+                <n-icon :component="Image" class="section-icon" />
+                <span class="section-title">图像生成</span>
+                <n-tag v-if="providerStore.hasConfiguredImageProvider" type="success" size="small">已配置</n-tag>
+              </div>
+              <n-alert type="info" size="small" class="mb-2">
+                电商主图、海报、PPT 配图等图片生成任务，首次使用只需配置这一项。
+              </n-alert>
+              <ProviderManager />
             </div>
 
-            <n-card size="small" class="mt-3">
-              <template #header>
-                <n-space align="center" :size="4">
-                  <n-icon :component="Lightbulb" />
-                  <span>使用说明</span>
-                </n-space>
-              </template>
-              <n-text depth="3">
-                1. 可灵AI是国内领先的视频生成平台，性价比高<br>
-                2. 即梦AI是字节跳动出品，中文理解好<br>
-                3. 配置完成后，在「视频生成」中即可使用<br>
-                4. 选择「自定义视频供应商」可接入其他兼容 API
-              </n-text>
-            </n-card>
-          </div>
-          
-          <div v-show="activeTab === 'edit'">
-            <n-alert type="info" class="mb-3">
-              用于换背景、局部重绘、扩图等图片二次处理。
-            </n-alert>
-            
-            <n-list bordered>
-              <n-list-item v-for="preset in editPresets" :key="preset.type">
-                <n-thing :title="preset.name">
-                  <template #avatar>
-                    <n-tag type="success">推荐</n-tag>
-                  </template>
-                  <template #description>
-                    {{ preset.description }}
-                  </template>
-                  <template #header-extra>
-                    <n-space align="center">
-                      <n-tag v-if="isEditConfigured(preset.type)" type="success" size="small">
-                        已配置
-                      </n-tag>
-                      <n-button
-                        size="small"
-                        :type="isEditConfigured(preset.type) ? 'default' : 'primary'"
-                        @click="showEditConfigModal(preset)"
-                      >
-                        {{ isEditConfigured(preset.type) ? '修改' : '配置' }}
-                      </n-button>
-                    </n-space>
-                  </template>
-                </n-thing>
-              </n-list-item>
-            </n-list>
+            <n-divider />
 
-            <div class="mt-3">
-              <n-button block dashed @click="openCustomProvider('edit')">
-                + 自定义编辑供应商
-              </n-button>
+            <div class="section-block">
+              <div class="section-header">
+                <n-icon :component="Film" class="section-icon" />
+                <span class="section-title">视频生成</span>
+                <n-tag v-if="providerStore.hasConfiguredVideoProvider" type="success" size="small">已配置</n-tag>
+              </div>
+              <n-list bordered>
+                <n-list-item v-for="preset in videoPresets" :key="preset.type">
+                  <n-thing :title="preset.name">
+                    <template #avatar>
+                      <n-tag :type="preset.recommended ? 'success' : 'default'">
+                        {{ preset.recommended ? '推荐' : '可选' }}
+                      </n-tag>
+                    </template>
+                    <template #description>{{ preset.description }}</template>
+                    <template #header-extra>
+                      <n-space align="center">
+                        <n-tag v-if="isVideoConfigured(preset.type)" type="success" size="small">已配置</n-tag>
+                        <n-button size="small" :type="isVideoConfigured(preset.type) ? 'default' : 'primary'" @click="showVideoConfigModal(preset)">
+                          {{ isVideoConfigured(preset.type) ? '修改' : '配置' }}
+                        </n-button>
+                      </n-space>
+                    </template>
+                  </n-thing>
+                </n-list-item>
+              </n-list>
+              <n-button block dashed class="mt-2" @click="openCustomProvider('video')">+ 自定义视频供应商</n-button>
+            </div>
+
+            <n-divider />
+
+            <div class="section-block">
+              <div class="section-header">
+                <n-icon :component="Pencil" class="section-icon" />
+                <span class="section-title">图片编辑</span>
+                <n-tag v-if="providerStore.hasConfiguredEditProvider" type="success" size="small">已配置</n-tag>
+              </div>
+              <n-list bordered>
+                <n-list-item v-for="preset in editPresets" :key="preset.type">
+                  <n-thing :title="preset.name">
+                    <template #avatar><n-tag type="success">推荐</n-tag></template>
+                    <template #description>{{ preset.description }}</template>
+                    <template #header-extra>
+                      <n-space align="center">
+                        <n-tag v-if="isEditConfigured(preset.type)" type="success" size="small">已配置</n-tag>
+                        <n-button size="small" :type="isEditConfigured(preset.type) ? 'default' : 'primary'" @click="showEditConfigModal(preset)">
+                          {{ isEditConfigured(preset.type) ? '修改' : '配置' }}
+                        </n-button>
+                      </n-space>
+                    </template>
+                  </n-thing>
+                </n-list-item>
+              </n-list>
+              <n-button block dashed class="mt-2" @click="openCustomProvider('edit')">+ 自定义编辑供应商</n-button>
             </div>
           </div>
-          
-          <div v-show="activeTab === 'vision'">
-            <n-alert type="info" class="mb-3">
-              视觉模型用于反推提示词功能，上传图片后自动分析生成提示词
-            </n-alert>
-            
-            <n-list bordered>
-              <n-list-item v-for="preset in visionPresets" :key="preset.type">
-                <n-thing :title="preset.name">
-                  <template #avatar>
-                    <n-tag :type="preset.type === 'zhipu' ? 'success' : 'default'">
-                      {{ preset.type === 'zhipu' ? '免费' : '付费' }}
-                    </n-tag>
-                  </template>
-                  <template #description>
-                    {{ preset.description }}
-                  </template>
-                  <template #header-extra>
-                    <n-space align="center">
-                      <n-tag v-if="isConfigured(preset.type)" type="success" size="small">
-                        已配置
-                      </n-tag>
-                      <n-button
-                        size="small"
-                        :type="isConfigured(preset.type) ? 'default' : 'primary'"
-                        @click="showConfigModal(preset)"
-                      >
-                        {{ isConfigured(preset.type) ? '修改' : '配置' }}
-                      </n-button>
-                    </n-space>
-                  </template>
-                </n-thing>
-              </n-list-item>
-            </n-list>
 
-            <div class="mt-3">
-              <n-button block dashed @click="openCustomProvider('vision')">
-                + 自定义视觉供应商
-              </n-button>
+          <!-- AI 能力：视觉模型 + LLM -->
+          <div v-show="activeTab === 'ai'">
+            <div class="section-block">
+              <div class="section-header">
+                <n-icon :component="Eye" class="section-icon" />
+                <span class="section-title">图片分析（视觉模型）</span>
+                <n-tag v-if="hasConfiguredVision" type="success" size="small">已配置</n-tag>
+              </div>
+              <n-alert type="info" size="small" class="mb-2">
+                上传图片后自动分析并反推提示词。
+              </n-alert>
+              <n-list bordered>
+                <n-list-item v-for="preset in visionPresets" :key="preset.type">
+                  <n-thing :title="preset.name">
+                    <template #avatar>
+                      <n-tag :type="preset.type === 'zhipu' ? 'success' : 'default'">
+                        {{ preset.type === 'zhipu' ? '免费' : '付费' }}
+                      </n-tag>
+                    </template>
+                    <template #description>{{ preset.description }}</template>
+                    <template #header-extra>
+                      <n-space align="center">
+                        <n-tag v-if="isConfigured(preset.type)" type="success" size="small">已配置</n-tag>
+                        <n-button size="small" :type="isConfigured(preset.type) ? 'default' : 'primary'" @click="showConfigModal(preset)">
+                          {{ isConfigured(preset.type) ? '修改' : '配置' }}
+                        </n-button>
+                      </n-space>
+                    </template>
+                  </n-thing>
+                </n-list-item>
+              </n-list>
+              <n-button block dashed class="mt-2" @click="openCustomProvider('vision')">+ 自定义视觉供应商</n-button>
             </div>
-            
-            <n-card size="small" class="mt-3">
-              <template #header>
-                <n-space align="center" :size="4">
-                  <n-icon :component="Lightbulb" />
-                  <span>使用说明</span>
-                </n-space>
-              </template>
-              <n-text depth="3">
-                1. 点击「配置」按钮，输入对应平台的 API Key<br>
-                2. 智谱 GLM-4V-Flash 为免费模型，新用户赠送额度<br>
-                3. 配置完成后，在「图片分析」中即可使用该模型
-              </n-text>
-            </n-card>
-          </div>
-          
-          <div v-show="activeTab === 'llm'">
-            <n-alert type="info" class="mb-3">
-              用于把中文需求优化成更专业的提示词，也用于内容维护中的 AI 入库。
-            </n-alert>
-            
-            <n-list bordered>
-              <n-list-item v-for="preset in llmPresets" :key="preset.type + preset.name">
-                <n-thing :title="preset.name">
-                  <template #avatar>
-                    <n-tag :type="preset.tagType">{{ preset.tagLabel }}</n-tag>
-                  </template>
-                  <template #description>
-                    {{ preset.description }}
-                  </template>
-                  <template #header-extra>
-                    <n-space align="center">
-                      <n-tag v-if="isLLMConfigured(preset.name)" type="success" size="small">
-                        已配置
-                      </n-tag>
-                      <n-button
-                        size="small"
-                        :type="isLLMConfigured(preset.name) ? 'default' : 'primary'"
-                        @click="showLLMConfigModal(preset)"
-                      >
-                        {{ isLLMConfigured(preset.name) ? '修改' : '配置' }}
-                      </n-button>
-                      <n-button
-                        v-if="isLLMConfigured(preset.name)"
-                        size="small"
-                        type="error"
-                        @click="removeLLMConfig(preset.name)"
-                      >
-                        删除
-                      </n-button>
-                    </n-space>
-                  </template>
-                </n-thing>
-              </n-list-item>
-            </n-list>
-            
-            <n-card size="small" class="mt-3">
-              <template #header>
-                <n-space align="center" :size="4">
-                  <n-icon :component="Lightbulb" />
-                  <span>使用说明</span>
-                </n-space>
-              </template>
-              <n-text depth="3">
-                1. <b>DeepSeek</b> 为推荐模型，性价比极高，注册即送额度<br>
-                2. 智谱 GLM-4-Flash 为免费模型，适合体验<br>
-                3. 配置后可在「AI入库」中使用智能提取和去重对比<br>
-                4. 也用于提示词 AI 优化功能
-              </n-text>
-            </n-card>
-          </div>
-          
-          <div v-show="activeTab === 'admin'">
-            <n-alert type="info" class="mb-3">
-              管理功能仅供内容维护使用，普通用户无需开启。
-            </n-alert>
 
+            <n-divider />
+
+            <div class="section-block">
+              <div class="section-header">
+                <n-icon :component="Brain" class="section-icon" />
+                <span class="section-title">提示词优化（LLM）</span>
+                <n-tag v-if="providerStore.hasConfiguredLLM" type="success" size="small">已配置</n-tag>
+              </div>
+              <n-alert type="info" size="small" class="mb-2">
+                把中文需求优化成专业提示词，也用于 AI 入库的智能提取和去重。
+              </n-alert>
+              <n-list bordered>
+                <n-list-item v-for="preset in llmPresets" :key="preset.type + preset.name">
+                  <n-thing :title="preset.name">
+                    <template #avatar><n-tag :type="preset.tagType">{{ preset.tagLabel }}</n-tag></template>
+                    <template #description>{{ preset.description }}</template>
+                    <template #header-extra>
+                      <n-space align="center">
+                        <n-tag v-if="isLLMConfigured(preset.name)" type="success" size="small">已配置</n-tag>
+                        <n-button size="small" :type="isLLMConfigured(preset.name) ? 'default' : 'primary'" @click="showLLMConfigModal(preset)">
+                          {{ isLLMConfigured(preset.name) ? '修改' : '配置' }}
+                        </n-button>
+                        <n-button v-if="isLLMConfigured(preset.name)" size="small" type="error" @click="removeLLMConfig(preset.name)">删除</n-button>
+                      </n-space>
+                    </template>
+                  </n-thing>
+                </n-list-item>
+              </n-list>
+            </div>
+          </div>
+
+          <!-- 高级设置 -->
+          <div v-show="activeTab === 'advanced'">
             <n-card size="small" title="内容管理" class="mb-3">
               <n-space vertical>
                 <n-space align="center" justify="space-between">
@@ -289,7 +194,7 @@
                 </n-space>
               </template>
               <n-text depth="3">
-                内容入库需要配置大语言模型（LLM）才能使用。请在「提示词优化」中先配置一个 LLM 供应商。
+                内容入库需要配置大语言模型（LLM）才能使用。请在「AI 能力」中先配置一个 LLM 供应商。
               </n-text>
             </n-card>
           </div>
@@ -502,7 +407,7 @@
             :placeholder="currentLLMPreset?.defaultModel || '请输入模型名称'"
           />
           <template #feedback>
-            <n-text depth="3" style="font-size: 12px">常用：{{ currentLLMPreset?.models?.map(m => m.value).join(' / ') }}</n-text>
+            <n-text depth="3" style="font-size: 12px">常用：{{ (currentLLMPreset?.models ?? []).map(m => m.value).join(' / ') }}</n-text>
           </template>
         </n-form-item>
         <n-form-item label="Endpoint">
@@ -622,14 +527,14 @@ import { useConfigStore, useProviderStore } from '../stores'
 import ProviderManager from './ProviderManager.vue'
 import { apiService } from '../api'
 import type { ProviderType, ProviderCapability } from '../types/provider'
-import { Image, Film, Pencil, Brain, Eye, Settings, Lightbulb, AlertTriangle, CheckCircle, XCircle } from 'lucide-vue-next'
+import { Image, Film, Pencil, Brain, Eye, Settings, AlertTriangle, CheckCircle, XCircle } from 'lucide-vue-next'
 
 const message = useMessage()
 
 const configStore = useConfigStore()
 const providerStore = useProviderStore()
 
-const activeTab = ref('providers')
+const activeTab = ref('generation')
 type TagType = 'success' | 'error' | 'warning' | 'default'
 interface CapabilityCard {
   tab: string
@@ -672,47 +577,40 @@ function capabilityStatus(cap: ProviderCapability): { ready: boolean; label: str
   return { ready: true, label: '待检测', tagType: 'warning' }
 }
 
-const capabilityCards = computed<CapabilityCard[]>(() => [
-  {
-    tab: 'providers',
-    icon: Image,
-    title: '生成图片',
-    desc: '新手必配',
-    ...capabilityStatus('image'),
-  },
-  {
-    tab: 'video',
-    icon: Film,
-    title: '生成视频',
-    desc: '可稍后配置',
-    ...capabilityStatus('video'),
-  },
-  {
-    tab: 'edit',
-    icon: Pencil,
-    title: '图片编辑',
-    desc: '换背景和扩图',
-    ...capabilityStatus('edit'),
-  },
-  {
-    tab: 'llm',
-    icon: Brain,
-    title: '提示词优化',
-    desc: '中文需求增强',
-    ready: providerStore.hasConfiguredLLM,
-    label: providerStore.hasConfiguredLLM ? '已配置' : '未配置',
-    tagType: providerStore.hasConfiguredLLM ? 'success' : 'default',
-  },
-  {
-    tab: 'vision',
-    icon: Eye,
-    title: '图片分析',
-    desc: '反推提示词',
-    ready: hasConfiguredVision.value,
-    label: hasConfiguredVision.value ? '已配置' : '未配置',
-    tagType: hasConfiguredVision.value ? 'success' : 'default',
-  },
-])
+const capabilityCards = computed<CapabilityCard[]>(() => {
+  const genReady = providerStore.hasConfiguredImageProvider || providerStore.hasConfiguredVideoProvider || providerStore.hasConfiguredEditProvider
+  const genStatus = capabilityStatus('image')
+  const aiReady = providerStore.hasConfiguredLLM || hasConfiguredVision.value
+  return [
+    {
+      tab: 'generation',
+      icon: Image,
+      title: '生成能力',
+      desc: '图像 / 视频 / 编辑',
+      ready: genReady,
+      label: genReady ? genStatus.label : '未配置',
+      tagType: genReady ? genStatus.tagType : 'default',
+    },
+    {
+      tab: 'ai',
+      icon: Brain,
+      title: 'AI 能力',
+      desc: '视觉分析 / 提示词优化',
+      ready: aiReady,
+      label: aiReady ? '已配置' : '未配置',
+      tagType: aiReady ? 'success' : 'default',
+    },
+    {
+      tab: 'advanced',
+      icon: Settings,
+      title: '高级设置',
+      desc: '内容管理',
+      ready: true,
+      label: '',
+      tagType: 'default',
+    },
+  ]
+})
 const showApiKeyModal = ref(false)
 const showVideoModal = ref(false)
 const showEditModal = ref(false)
@@ -1278,6 +1176,29 @@ function removeLLMConfig(name: string): void {
 .config-content-area {
   flex: 1;
   min-width: 0;
+  overflow-y: auto;
+}
+
+.section-block {
+  margin-bottom: 4px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.section-icon {
+  font-size: 18px;
+  color: var(--brand-500);
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 :deep(.n-list-item) {

@@ -131,8 +131,46 @@
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue'
 import { useMessage } from 'naive-ui'
-import { useGeneratorStore } from '../../stores'
-import { promptTemplates, templateCategories, type PromptTemplate } from '../../data/promptTemplates'
+import { useGeneratorStore, useDataStore } from '../../stores'
+
+interface PromptTemplate {
+  id: string
+  name: string
+  category: 'tvc' | 'ecommerce' | 'social' | 'documentary' | 'animation'
+  structure: string
+  elements: {
+    name: string
+    description: string
+    required: boolean
+    examples: string[]
+  }[]
+  example: string
+  tips: string[]
+}
+
+const CATEGORY_ICONS: Record<string, string> = {
+  '电商': 'ShoppingCart', 'product': 'ShoppingCart',
+  '社媒': 'Smartphone', 'social': 'Smartphone',
+  '商务': 'Briefcase', 'education': 'BookOpen',
+  '人像': 'User', 'portrait': 'User',
+  '品牌': 'Star', 'brand': 'Star',
+  '文化': 'Globe', 'culture': 'Globe',
+  '节日': 'Calendar', 'festival': 'Calendar',
+  '美食': 'Coffee',
+  '科技': 'Cpu',
+}
+
+const templateCategories = computed(() => {
+  const cats = new Set<string>()
+  for (const t of dataStore.templates || []) {
+    if (t.category) cats.add(t.category)
+  }
+  return Array.from(cats).map(c => ({
+    value: c,
+    label: c,
+    icon: CATEGORY_ICONS[c] || 'Tag',
+  }))
+})
 
 const emit = defineEmits<{
   insert: [keyword: string]
@@ -140,17 +178,47 @@ const emit = defineEmits<{
 
 const message = useMessage()
 const generatorStore = useGeneratorStore()
+const dataStore = useDataStore()
 
 const selectedCategory = ref('all')
 const showUseModal = ref(false)
 const currentTemplate = ref<PromptTemplate | null>(null)
 const formValues = reactive<Record<string, string>>({})
 
-const filteredTemplates = computed(() => {
-  if (selectedCategory.value === 'all') {
-    return promptTemplates
+/** 从 prompt 中提取 {占位符} 作为 elements */
+function extractElements(prompt: string): PromptTemplate['elements'] {
+  const matches = prompt.match(/\{([^}]+)\}/g) || []
+  return matches.map(m => {
+    const name = m.replace(/[{}]/g, '')
+    return {
+      name,
+      description: `请输入${name}`,
+      required: true,
+      examples: [],
+    }
+  })
+}
+
+/** 将 API 返回的 template 映射为组件所需的 PromptTemplate 格式 */
+function mapTemplate(raw: any): PromptTemplate {
+  return {
+    id: raw.id || '',
+    name: raw.title || raw.name || raw.description || '',
+    category: raw.category || 'social',
+    structure: raw.prompt || '',
+    elements: extractElements(raw.prompt || ''),
+    example: raw.prompt || '',
+    tips: Array.isArray(raw.tags) ? raw.tags : (typeof raw.tags === 'string' ? JSON.parse(raw.tags || '[]') : []),
   }
-  return promptTemplates.filter(t => t.category === selectedCategory.value)
+}
+
+const filteredTemplates = computed(() => {
+  const raw = dataStore.templates || []
+  const templates = raw.map(mapTemplate)
+  if (selectedCategory.value === 'all') {
+    return templates
+  }
+  return templates.filter((t: PromptTemplate) => t.category === selectedCategory.value)
 })
 
 const generatedPrompt = computed(() => {

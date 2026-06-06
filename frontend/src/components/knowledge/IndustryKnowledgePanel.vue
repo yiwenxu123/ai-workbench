@@ -57,13 +57,6 @@
               </ul>
             </div>
             
-            <div class="knowledge-section">
-              <strong>常见错误</strong>
-              <ul>
-                <li v-for="(mistake, idx) in knowledge.commonMistakes" :key="idx">{{ mistake }}</li>
-              </ul>
-            </div>
-            
             <div class="knowledge-section" v-if="knowledge.relatedTemplates.length > 0">
               <strong>相关模板</strong>
               <n-space>
@@ -86,23 +79,47 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { industryKnowledge, industryCategories, searchKnowledge } from '../../data/industryKnowledge'
+import { useDataStore } from '../../stores'
+
+const industryCategories = [
+  { value: 'ecommerce', label: '电商行业', icon: 'ShoppingCart' },
+  { value: 'corporate', label: '企业宣传', icon: 'Building2' },
+  { value: 'social', label: '新媒体', icon: 'Smartphone' },
+  { value: 'culture', label: '文化内容', icon: 'Palette' },
+  { value: 'education', label: '教育科普', icon: 'BookOpen' }
+]
+
+const dataStore = useDataStore()
 
 const searchText = ref('')
 const selectedCategory = ref('all')
 
 const filteredKnowledge = computed(() => {
-  let knowledge = industryKnowledge
-  
+  let knowledge = dataStore.industries
+
   if (selectedCategory.value !== 'all') {
-    knowledge = knowledge.filter(k => k.category === selectedCategory.value)
+    knowledge = knowledge.filter((k: any) => k.category === selectedCategory.value)
   }
-  
+
   if (searchText.value) {
-    knowledge = searchKnowledge(searchText.value)
+    const query = searchText.value.toLowerCase()
+    knowledge = knowledge.filter((k: any) => {
+      const tipsArr = Array.isArray(k.tips) ? k.tips : (typeof k.tips === 'string' && k.tips ? [k.tips] : [])
+      return k.title?.toLowerCase().includes(query) ||
+        k.content?.toLowerCase().includes(query) ||
+        tipsArr.some((t: string) => t.toLowerCase().includes(query))
+    })
   }
-  
-  return knowledge
+
+  return knowledge.map((k: any) => ({
+    id: k.id,
+    title: k.title,
+    category: k.category,
+    content: k.content,
+    tips: Array.isArray(k.tips) ? k.tips : (typeof k.tips === 'string' && k.tips ? [k.tips] : []),
+    bestPractices: k.examples || [],
+    relatedTemplates: k.relatedTerms || []
+  }))
 })
 </script>
 

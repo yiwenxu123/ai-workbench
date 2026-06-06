@@ -1,5 +1,3 @@
-import casesData from './cases.json'
-
 export interface CaseExample {
   id: string
   name: string
@@ -23,7 +21,8 @@ export interface CaseExample {
   subjectPlaceholder?: string
 }
 
-export const caseExamples: CaseExample[] = casesData as CaseExample[]
+// 数据已迁移到 SQLite，通过 data store (useDataStore) 从 API 获取
+export const caseExamples: CaseExample[] = []
 
 export const caseCategories = [
   { value: 'ecommerce', label: '电商投流', icon: 'ShoppingCart' },

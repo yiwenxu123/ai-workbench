@@ -67,31 +67,96 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue'
-import { negativePromptPacks, negativePromptCategories, quickNegativePresets, mergePrompts } from '../../data/negativePrompts'
+import { useDataStore } from '../../stores'
+
+const negativePromptCategories = [
+  { value: 'quality', label: '质量优化', icon: 'Sparkles' },
+  { value: 'style', label: '风格净化', icon: 'Palette' },
+  { value: 'composition', label: '构图优化', icon: 'Ruler' },
+  { value: 'scene', label: '场景专用', icon: 'Film' },
+  { value: 'custom', label: '自定义', icon: 'Settings' }
+]
+
+const quickNegativePresets = [
+  {
+    name: '高质量写实',
+    packIds: ['neg-general', 'neg-realistic'],
+    description: '适合需要真实照片效果的场景'
+  },
+  {
+    name: '产品电商',
+    packIds: ['neg-general', 'neg-ecommerce', 'neg-composition'],
+    description: '适合电商产品图生成'
+  },
+  {
+    name: '人物肖像',
+    packIds: ['neg-general', 'neg-portrait', 'neg-realistic'],
+    description: '适合人物肖像生成'
+  },
+  {
+    name: '视频生成',
+    packIds: ['neg-general', 'neg-video'],
+    description: '适合视频生成场景'
+  }
+]
 
 const emit = defineEmits<{
   apply: [negativePrompt: string]
 }>()
 
+const dataStore = useDataStore()
+
 const selectedCategory = ref('all')
 const selectedPacks = reactive<Record<string, boolean>>({})
 
-negativePromptPacks.forEach(pack => {
-  if (pack.isDefault) {
-    selectedPacks[pack.id] = true
-  }
+const CATEGORY_MAP: Record<string, string> = {
+  general: 'quality', portrait: 'style', composition: 'composition',
+  ecommerce: 'scene', video: 'scene', style: 'style', quality: 'quality',
+}
+
+const storePacks = computed(() => {
+  return dataStore.negativePacks.map((p: any) => ({
+    id: p.id,
+    name: p.title,
+    description: p.content,
+    prompts: typeof p.negative_prompt === 'string' && p.negative_prompt
+      ? p.negative_prompt.split(',').map((s: string) => s.trim()).filter(Boolean)
+      : [],
+    category: CATEGORY_MAP[p.category] || 'custom',
+    isDefault: p.category === 'general',
+  }))
+})
+
+// Select default packs after store loads
+dataStore.$subscribe(() => {
+  storePacks.value.forEach(pack => {
+    if (pack.isDefault && !(pack.id in selectedPacks)) {
+      selectedPacks[pack.id] = true
+    }
+  })
 })
 
 const filteredPacks = computed(() => {
   if (selectedCategory.value === 'all') {
-    return negativePromptPacks
+    return storePacks.value
   }
-  return negativePromptPacks.filter(p => p.category === selectedCategory.value)
+  return storePacks.value.filter(p => p.category === selectedCategory.value)
 })
 
 const selectedCount = computed(() => {
   return Object.values(selectedPacks).filter(Boolean).length
 })
+
+function mergePromptsByIds(ids: string[]): string {
+  const prompts = new Set<string>()
+  ids.forEach(id => {
+    const pack = storePacks.value.find((p: any) => p.id === id)
+    if (pack) {
+      pack.prompts.forEach((p: string) => prompts.add(p))
+    }
+  })
+  return Array.from(prompts).join(', ')
+}
 
 function updateSelection() {
 }
@@ -100,14 +165,11 @@ function applySelected() {
   const packIds = Object.entries(selectedPacks)
     .filter(([_, checked]) => checked)
     .map(([id]) => id)
-  
-  const mergedPrompt = mergePrompts(packIds)
-  emit('apply', mergedPrompt)
+  emit('apply', mergePromptsByIds(packIds))
 }
 
 function applyPreset(preset: typeof quickNegativePresets[0]) {
-  const mergedPrompt = mergePrompts(preset.packs)
-  emit('apply', mergedPrompt)
+  emit('apply', mergePromptsByIds(preset.packIds))
 }
 </script>
 

@@ -85,40 +85,67 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { terminology, termCategoryConfig, type TermCategory } from '../../data/terminology'
+import { useDataStore } from '../../stores'
+
+type TermCategory = 'style' | 'lighting' | 'composition' | 'color' | 'material' | 'mood' | 'technique'
+
+const termCategoryConfig: Record<TermCategory, { label: string; icon: string; color: string }> = {
+  style: { label: '风格', icon: 'Palette', color: '#1890ff' },
+  lighting: { label: '光影', icon: 'Lightbulb', color: '#fadb14' },
+  composition: { label: '构图', icon: 'Ruler', color: '#722ed1' },
+  color: { label: '色彩', icon: 'Rainbow', color: '#eb2f96' },
+  material: { label: '材质', icon: 'BrickWall', color: '#fa8c16' },
+  mood: { label: '氛围', icon: 'Moon', color: '#13c2c2' },
+  technique: { label: '技法', icon: 'Wrench', color: '#52c41a' }
+}
 
 const emit = defineEmits<{
   insert: [keyword: string]
 }>()
 
+const dataStore = useDataStore()
+
 const searchQuery = ref('')
-const selectedCategory = ref<string | TermCategory>('all')
+const selectedCategory = ref<string>('all')
 
 const filteredTerms = computed(() => {
-  let terms = terminology
-  
+  let terms = dataStore.terms
+
   if (selectedCategory.value !== 'all') {
-    terms = terms.filter(t => t.category === selectedCategory.value)
+    terms = terms.filter((t: any) => t.category === selectedCategory.value)
   }
-  
+
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
-    terms = terms.filter(t => 
-      t.name.toLowerCase().includes(query) ||
-      t.nameEn?.toLowerCase().includes(query) ||
-      t.description.toLowerCase().includes(query)
+    terms = terms.filter((t: any) =>
+      t.title?.toLowerCase().includes(query) ||
+      t.content?.toLowerCase().includes(query) ||
+      t.tags?.some((tag: string) => tag.toLowerCase().includes(query))
     )
   }
-  
-  return terms
+
+  return terms.map((t: any) => {
+    const tipsArr = Array.isArray(t.tips) ? t.tips : (typeof t.tips === 'string' && t.tips ? [t.tips] : [])
+    return {
+      id: t.id,
+      name: t.title,
+      nameEn: t.tags?.[0],
+      category: t.category,
+      description: t.content,
+      usage: tipsArr.join('；'),
+      examples: t.examples || [],
+      relatedTerms: t.relatedTerms || [],
+      tips: tipsArr.join('；'),
+    }
+  })
 })
 
-function getCategoryLabel(category: TermCategory): string {
-  return termCategoryConfig[category]?.label || category
+function getCategoryLabel(category: string): string {
+  return (termCategoryConfig as any)[category]?.label || category
 }
 
-function getCategoryColor(category: TermCategory): string {
-  return termCategoryConfig[category]?.color || '#666'
+function getCategoryColor(category: string): string {
+  return (termCategoryConfig as any)[category]?.color || '#666'
 }
 </script>
 

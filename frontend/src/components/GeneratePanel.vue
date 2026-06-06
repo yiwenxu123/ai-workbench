@@ -402,14 +402,6 @@
             <template #icon><n-icon :component="StarOutline" /></template>
             收录为案例
           </n-button>
-          <n-button size="small" secondary @click="showCompareLab = true">
-            <template #icon><n-icon :component="FlaskConical" /></template>
-            A/B 对比
-          </n-button>
-          <n-button size="small" secondary @click="showBatchGenerator = true">
-            <template #icon><n-icon :component="RefreshCw" /></template>
-            批量生成
-          </n-button>
         </div>
 
         <!-- 推荐学习：基于当前提示词匹配相关知识 -->
@@ -567,8 +559,6 @@
       </template>
     </n-modal>
 
-    <CompareLab v-model:show="showCompareLab" />
-    <BatchGenerator v-model:show="showBatchGenerator" />
   </div>
 </template>
 
@@ -576,12 +566,10 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { NForm, NFormItem, NInput, NInputNumber, NSelect, NButton, NGrid, NGi, NAlert, NIcon, NProgress, NButtonGroup, NTag, NModal, NSpace, NCollapse, NCollapseItem, NCollapseTransition, useMessage } from 'naive-ui'
 import { DownloadOutline, RemoveOutline, AddOutline, ExpandOutline, ResizeOutline, CreateOutline, VideocamOutline, StarOutline } from '@vicons/ionicons5'
-import { Settings, Sparkles, Zap, FlaskConical, RefreshCw, BookOpen, CheckCircle2, ShoppingBag, Megaphone, BarChart3, User, Film, Pencil, ChevronDown, ChevronUp, Info } from 'lucide-vue-next'
+import { Settings, Sparkles, Zap, BookOpen, CheckCircle2, ShoppingBag, Megaphone, BarChart3, User, Film, Pencil, ChevronDown, ChevronUp, Info } from 'lucide-vue-next'
 import { useConfigStore, useGeneratorStore, useProviderStore, useDataStore } from '../stores'
 import PromptAnalyzer from './learn/PromptAnalyzer.vue'
 import PromptOptimizer from './PromptOptimizer.vue'
-import CompareLab from './lab/CompareLab.vue'
-import BatchGenerator from './workflow/BatchGenerator.vue'
 import QuickActions from './QuickActions.vue'
 import ImagePreview from './common/ImagePreview.vue'
 import { getModelSizeConfig, isSizeValidForModel } from '../data/modelSizeConfig'
@@ -621,8 +609,6 @@ function insertTermSuggestion(term: TermEntry) {
 }
 
 const showOptimizer = ref(false)
-const showCompareLab = ref(false)
-const showBatchGenerator = ref(false)
 
 /** 全局键盘快捷键 */
 useKeyboard([

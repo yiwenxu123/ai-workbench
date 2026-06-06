@@ -469,22 +469,133 @@ import { useGeneratorStore, useDataStore } from '../stores'
 import { useWorkflowStore, type WorkflowTemplate } from '../stores/workflow'
 import { Lightbulb, Palette, Smartphone, Package, Building2, BookOpen, User } from 'lucide-vue-next'
 import { getLucideIconComponent } from '../utils/icons'
-import {
-  festivalCategories,
-  getCurrentFestival,
-  generateFestivalPrompt,
-  type FestivalTemplate,
-  type FestivalType
-} from '../data/festivalTemplates'
-import {
-  promptFormulas,
-  formulaCategories,
-  quickStyleCodes,
-  qualityKeywords,
-  lightingKeywords,
-  generatePromptFromFormula,
-  type PromptFormula
-} from '../data/promptFormulas'
+// --- Local UI constants (not migrated to dataStore) ---
+
+const festivalCategoryDefs = [
+  { id: 'spring_festival', name: '春节', icon: 'Gift', color: '#E74C3C' },
+  { id: 'lantern', name: '元宵节', icon: 'Lantern', color: '#F39C12' },
+  { id: 'dragon_boat', name: '端午节', icon: 'Sparkles', color: '#27AE60' },
+  { id: 'mid_autumn', name: '中秋节', icon: 'Moon', color: '#3498DB' },
+  { id: 'national', name: '国庆节', icon: 'Flag', color: '#E74C3C' },
+  { id: 'double_11', name: '双十一', icon: 'ShoppingCart', color: '#9B59B6' },
+  { id: 'christmas', name: '圣诞节', icon: 'TreePine', color: '#27AE60' },
+  { id: 'new_year', name: '元旦', icon: 'Sparkles', color: '#3498DB' }
+]
+
+const formulaCategoryDefs = [
+  { id: '基础', name: '基础公式', icon: 'FileText', description: '通用提示词结构' },
+  { id: '人物', name: '人物肖像', icon: 'User', description: '人物相关公式' },
+  { id: '商业', name: '商业产品', icon: 'Package', description: '产品展示公式' },
+  { id: '风景', name: '风景场景', icon: 'Mountain', description: '自然风景公式' },
+  { id: '建筑', name: '建筑设计', icon: 'Landmark', description: '建筑相关公式' },
+  { id: '美食', name: '美食摄影', icon: 'UtensilsCrossed', description: '美食相关公式' },
+  { id: '动漫', name: '动漫角色', icon: 'Palette', description: '动漫风格公式' },
+  { id: '概念', name: '概念艺术', icon: 'Lightbulb', description: '概念设计公式' }
+]
+
+const quickStyleCodes = [
+  { code: 'photorealistic', name: '写实摄影', description: '真实照片效果' },
+  { code: 'cinematic', name: '电影感', description: '电影画面质感' },
+  { code: 'anime', name: '动漫风格', description: '日系动漫效果' },
+  { code: 'oil painting', name: '油画风格', description: '经典油画质感' },
+  { code: 'watercolor', name: '水彩风格', description: '水彩画效果' },
+  { code: 'digital art', name: '数字艺术', description: '现代数字绘画' },
+  { code: 'concept art', name: '概念艺术', description: '游戏电影概念图' },
+  { code: '3D render', name: '3D渲染', description: '三维渲染效果' },
+  { code: 'illustration', name: '插画风格', description: '现代插画效果' },
+  { code: 'minimalist', name: '极简风格', description: '简约设计风格' }
+]
+
+const qualityKeywords = [
+  { code: '4K', name: '4K高清', description: '高分辨率' },
+  { code: '8K', name: '8K超清', description: '超高分辨率' },
+  { code: 'highly detailed', name: '高细节', description: '细节丰富' },
+  { code: 'masterpiece', name: '杰作', description: '顶级质量' },
+  { code: 'best quality', name: '最佳质量', description: '最优效果' },
+  { code: 'ultra realistic', name: '超写实', description: '极度真实' },
+  { code: 'professional', name: '专业级', description: '专业品质' },
+  { code: 'studio quality', name: '工作室质量', description: '商业级品质' }
+]
+
+const lightingKeywords = [
+  { code: 'natural lighting', name: '自然光', description: '自然光照' },
+  { code: 'studio lighting', name: '影棚光', description: '专业布光' },
+  { code: 'golden hour', name: '黄金时刻', description: '日出日落光线' },
+  { code: 'soft lighting', name: '柔光', description: '柔和光线' },
+  { code: 'dramatic lighting', name: '戏剧光', description: '强烈对比光' },
+  { code: 'rim lighting', name: '轮廓光', description: '边缘光效' },
+  { code: 'backlight', name: '逆光', description: '背面光源' },
+  { code: 'volumetric lighting', name: '体积光', description: '光束效果' }
+]
+
+// --- Local utility functions (kept for date-based logic & prompt generation) ---
+
+type FestivalType = 'spring_festival' | 'lantern' | 'qingming' | 'labor' | 'dragon_boat' | 'mid_autumn' | 'national' | 'double_11' | 'christmas' | 'new_year'
+
+interface FestivalTemplate {
+  id: string
+  name: string
+  festival: FestivalType
+  festivalName: string
+  description: string
+  promptTemplate: string
+  negativePrompt: string
+  tips: string[]
+  tags: string[]
+  colorScheme: string[]
+  elements: string[]
+}
+
+interface PromptFormula {
+  id: string
+  name: string
+  category: string
+  description: string
+  structure: FormulaPart[]
+  example: string
+  tips: string[]
+}
+
+interface FormulaPart {
+  key: string
+  label: string
+  description: string
+  required: boolean
+  options?: string[]
+  placeholder: string
+}
+
+function getCurrentFestival(): FestivalType | null {
+  const now = new Date()
+  const month = now.getMonth() + 1
+  const day = now.getDate()
+  if (month === 1 && day >= 1 && day <= 15) return 'spring_festival'
+  if (month === 1 && day >= 15 && day <= 20) return 'lantern'
+  if (month === 6 && day >= 1 && day <= 10) return 'dragon_boat'
+  if (month === 9 && day >= 15 && day <= 25) return 'mid_autumn'
+  if (month === 10 && day >= 1 && day <= 7) return 'national'
+  if (month === 11 && day >= 1 && day <= 15) return 'double_11'
+  if (month === 12 && day >= 20 && day <= 26) return 'christmas'
+  if (month === 12 && day >= 28) return 'new_year'
+  return null
+}
+
+function generateFestivalPrompt(template: FestivalTemplate, values: Record<string, string>): string {
+  let prompt = template.promptTemplate
+  for (const [key, value] of Object.entries(values)) {
+    prompt = prompt.replace(`{${key}}`, value)
+  }
+  return prompt
+}
+
+function generatePromptFromFormula(formula: PromptFormula, values: Record<string, string>): string {
+  const parts: string[] = []
+  for (const part of formula.structure) {
+    const value = values[part.key]
+    if (value) parts.push(value)
+  }
+  return parts.join('，')
+}
 
 const emit = defineEmits<{
   select: [prompt: string]
@@ -564,9 +675,62 @@ const modelOptions = [
   { label: '通义万相 V1', value: 'wanx-v1' }
 ]
 
+// --- Derived data from dataStore ---
+
+const festivalCategories = computed(() => {
+  const festivals = new Set(
+    (dataStore.festivalTemplates || []).map((t: any) => t.festival)
+  )
+  return festivalCategoryDefs.filter(c => festivals.has(c.id))
+})
+
+const formulaCategories = computed(() => {
+  const categories = new Set(
+    (dataStore.formulas || []).map((f: any) => f.category)
+  )
+  return formulaCategoryDefs.filter(c => categories.has(c.id))
+})
+
+/** 尝试将可能是 JSON 字符串的字段解析为数组 */
+function parseJsonArray(val: any): any[] {
+  if (Array.isArray(val)) return val
+  if (typeof val === 'string' && val) {
+    try { const p = JSON.parse(val); return Array.isArray(p) ? p : [] } catch { return [] }
+  }
+  return []
+}
+
+/** 从 content 中提取结构公式（+ 分隔的部分），转为 FormulaPart[] */
+function extractStructure(content: string): FormulaPart[] {
+  if (!content) return []
+  const match = content.match(/公式[：:](.+)/)
+  let parts: string[] = []
+  if (match?.[1]) parts = match[1].split('+').map(s => s.trim()).filter(Boolean)
+  else if (content.includes('+')) parts = content.split('+').map(s => s.trim()).filter(Boolean)
+  return parts.map((p, i) => ({
+    key: `part${i}`,
+    label: p,
+    description: p,
+    required: i < 3,
+    placeholder: `请输入${p}`,
+  }))
+}
+
+const formulas = computed<PromptFormula[]>(() =>
+  (dataStore.formulas || []).map((f: any) => ({
+    id: f.id,
+    name: f.title,
+    category: f.category,
+    description: f.content,
+    structure: extractStructure(f.content || ''),
+    example: parseJsonArray(f.examples)[0] || '',
+    tips: parseJsonArray(f.tips),
+  }))
+)
+
 const currentFestivalName = computed(() => {
   const current = getCurrentFestival()
-  const cat = festivalCategories.find(c => c.id === current)
+  const cat = festivalCategories.value.find(c => c.id === current)
   return cat ? cat.name : '春节'
 })
 
@@ -588,8 +752,8 @@ const selectedFestivalTemplates = computed(() =>
   (dataStore.festivalTemplates || []).filter(t => t.festival === selectedFestival.value)
 )
 
-const selectedFormulas = computed(() => 
-  promptFormulas.filter(f => f.category === selectedFormulaCategory.value)
+const selectedFormulas = computed(() =>
+  formulas.value.filter(f => f.category === selectedFormulaCategory.value)
 )
 
 const filteredMyTemplates = computed(() => {
@@ -601,9 +765,9 @@ const filteredMyTemplates = computed(() => {
   
   if (myTemplateSearch.value) {
     const search = myTemplateSearch.value.toLowerCase()
-    templates = templates.filter(t => 
-      t.name.toLowerCase().includes(search) ||
-      t.description.toLowerCase().includes(search)
+    templates = templates.filter(t =>
+      (t.name || '').toLowerCase().includes(search) ||
+      (t.description || '').toLowerCase().includes(search)
     )
   }
   

@@ -26,14 +26,13 @@ import { computed } from 'vue'
 import { NButton, NIcon, NSpace, NTooltip, useMessage } from 'naive-ui'
 import {
   CopyOutline,
-  SaveOutline,
   RefreshOutline,
   DownloadOutline,
   ExpandOutline,
   HeartOutline,
   CreateOutline
 } from '@vicons/ionicons5'
-import { useGeneratorStore, usePromptStore, useHistoryStore } from '../stores'
+import { useGeneratorStore, useHistoryStore } from '../stores'
 
 interface QuickAction {
   key: string
@@ -52,7 +51,6 @@ const emit = defineEmits<{
 
 const message = useMessage()
 const generatorStore = useGeneratorStore()
-const promptStore = usePromptStore()
 const historyStore = useHistoryStore()
 
 const hasImage = computed(() => !!generatorStore.lastImage)
@@ -66,14 +64,6 @@ const actions = computed<QuickAction[]>(() => [
     disabled: !hasPrompt.value,
     tooltip: '复制当前提示词到剪贴板',
     handler: handleCopyPrompt
-  },
-  {
-    key: 'save-prompt',
-    label: '保存到库',
-    icon: SaveOutline,
-    disabled: !hasPrompt.value,
-    tooltip: '保存提示词到提示词库',
-    handler: handleSavePrompt
   },
   {
     key: 'regenerate',
@@ -109,14 +99,6 @@ const actions = computed<QuickAction[]>(() => [
     handler: handleFavorite
   },
   {
-    key: 'bookmark',
-    label: '记笔记',
-    icon: CreateOutline,
-    disabled: !hasImage.value,
-    tooltip: '为这张图添加笔记',
-    handler: handleAddNote
-  },
-  {
     key: 'feedback-good',
     label: '好用',
     icon: HeartOutline,
@@ -141,21 +123,6 @@ async function handleCopyPrompt(): Promise<void> {
     message.success('提示词已复制')
   } catch {
     message.error('复制失败')
-  }
-}
-
-async function handleSavePrompt(): Promise<void> {
-  if (!generatorStore.prompt) return
-  try {
-    await promptStore.add({
-      title: generatorStore.prompt.slice(0, 30) + (generatorStore.prompt.length > 30 ? '...' : ''),
-      content: generatorStore.prompt,
-      category: 'general',
-      tags: []
-    })
-    message.success('已保存到提示词库')
-  } catch {
-    message.error('保存失败')
   }
 }
 
@@ -189,10 +156,6 @@ async function handleFavorite(): Promise<void> {
   } catch {
     message.error('收藏失败')
   }
-}
-
-function handleAddNote(): void {
-  message.info('请到历史记录中为这张图添加笔记')
 }
 
 function handleFeedback(value: 'good' | 'bad'): void {
