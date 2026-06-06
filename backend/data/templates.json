@@ -1,0 +1,92 @@
+[
+  {
+    "id": "tpl-ecommerce-main",
+    "title": "电商主图",
+    "category": "电商",
+    "description": "适合电商场景的基础主图模板",
+    "prompt": "高清产品展示，{产品}位于画面中央，{背景}背景，商业摄影布光，细节清晰，质感突出",
+    "negativePrompt": "blurry, low quality, watermark, text",
+    "tags": ["电商", "产品", "基础"]
+  },
+  {
+    "id": "tpl-social-cover",
+    "title": "社媒封面图",
+    "category": "社媒",
+    "description": "适合小红书/公众号封面",
+    "prompt": "{主题}封面图，竖版构图适配手机端，视觉焦点明确，色彩明亮，{风格}风格",
+    "negativePrompt": "dull, boring, cluttered",
+    "tags": ["社媒", "封面", "基础"]
+  },
+  {
+    "id": "tpl-ppt-bg",
+    "title": "PPT背景图",
+    "category": "商务",
+    "description": "适合商务PPT的背景图",
+    "prompt": "商务风格背景图，{主题}概念视觉化，蓝色/灰色为主色调，简洁大气",
+    "negativePrompt": "cartoonish, overly colorful, cluttered",
+    "tags": ["PPT", "商务", "基础"]
+  },
+  {
+    "id": "tpl-portrait",
+    "title": "形象照/头像",
+    "category": "人像",
+    "description": "适合个人使用的形象照模板",
+    "prompt": "专业形象照，{人物}，{背景}背景，柔光布光，半身构图，自然表情",
+    "negativePrompt": "casual, messy, harsh shadows",
+    "tags": ["人像", "商务", "基础"]
+  },
+  {
+    "id": "tpl-brand-poster",
+    "title": "品牌海报",
+    "category": "品牌",
+    "description": "适合品牌宣传的海报模板",
+    "prompt": "{品牌}品牌海报，{元素}为视觉核心，{色调}色调，层次丰富，高端质感",
+    "negativePrompt": "cheap, amateur, low resolution",
+    "tags": ["品牌", "海报", "高端"]
+  },
+  {
+    "id": "tpl-product-scene",
+    "title": "产品场景图",
+    "category": "电商",
+    "description": "产品融入使用场景",
+    "prompt": "{产品}在{场景}中使用，自然光，生活化氛围，浅景深",
+    "negativePrompt": "cluttered, overexposed",
+    "tags": ["电商", "场景", "进阶"]
+  },
+  {
+    "id": "tpl-chinese-style",
+    "title": "国风插画",
+    "category": "文化",
+    "description": "中国风主题插画",
+    "prompt": "中国传统风格插画，{主题}为核心，水墨技法，留白构图，{配色}配色",
+    "negativePrompt": "western style, modern, messy",
+    "tags": ["国风", "文化", "插画"]
+  },
+  {
+    "id": "tpl-festival",
+    "title": "节日祝福图",
+    "category": "节日",
+    "description": "适合节日祝福场景",
+    "prompt": "{节日}主题海报，{元素}为核心，{风格}风格，{配色}配色，喜庆/温馨氛围",
+    "negativePrompt": "dark, depressing, low quality",
+    "tags": ["节日", "祝福", "通用"]
+  },
+  {
+    "id": "tpl-food",
+    "title": "美食摄影",
+    "category": "美食",
+    "description": "适合餐饮/美食展示",
+    "prompt": "{美食}，自然光拍摄，侧逆光凸显食物质感，暖色调，浅景深虚化背景，诱人食欲",
+    "negativePrompt": "unappetizing, cold lighting, blurry",
+    "tags": ["美食", "餐饮", "摄影"]
+  },
+  {
+    "id": "tpl-tech-product",
+    "title": "科技产品渲染",
+    "category": "科技",
+    "description": "适合科技产品展示",
+    "prompt": "{产品}科技感展示，{背景}背景，蓝色/紫色/白色冷光氛围，产品表面光泽细腻",
+    "negativePrompt": "warm lighting, messy, low quality",
+    "tags": ["科技", "产品", "渲染"]
+  }
+]

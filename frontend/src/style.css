@@ -1,0 +1,229 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ═══════════════════════════════════════════════
+   Design Tokens — Deep Space Blue + Aurora Purple
+   Modern Tech Theme
+   ═══════════════════════════════════════════════ */
+:root {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* Brand — Deep Space Blue + Aurora Purple */
+  --brand-50:  #eef2ff;
+  --brand-100: #e0e7ff;
+  --brand-200: #c7d2fe;
+  --brand-300: #a5b4fc;
+  --brand-400: #818cf8;
+  --brand-500: #4f7df3;
+  --brand-600: #4f46e5;
+  --brand-700: #4338ca;
+  --brand-800: #3730a3;
+  --brand-900: #312e81;
+
+  /* Accent — Aurora Purple */
+  --accent-400: #a78bfa;
+  --accent-500: #8b5cf6;
+  --accent-600: #7c3aed;
+
+  /* Neutral — cool gray scale */
+  --gray-50:  #f8fafc;
+  --gray-100: #f1f5f9;
+  --gray-200: #e2e8f0;
+  --gray-300: #cbd5e1;
+  --gray-400: #94a3b8;
+  --gray-500: #64748b;
+  --gray-600: #475569;
+  --gray-700: #334155;
+  --gray-800: #1e293b;
+  --gray-900: #0f172a;
+
+  /* Surfaces — unified, no harsh contrast */
+  --bg-page:      #f8fafc;
+  --bg-card:      #ffffff;
+  --bg-subtle:    #f1f5f9;
+  --bg-hover:     #f8fafc;
+  --border:       #e2e8f0;
+  --border-light: #f1f5f9;
+  --text-primary:   #0f172a;
+  --text-secondary: #64748b;
+  --text-tertiary:  #94a3b8;
+
+  /* Shadows — subtle elevation */
+  --shadow-sm:  0 1px 2px rgba(15, 23, 42, .04), 0 1px 3px rgba(15, 23, 42, .03);
+  --shadow-md:  0 4px 12px rgba(15, 23, 42, .05), 0 1px 3px rgba(15, 23, 42, .04);
+  --shadow-lg:  0 8px 24px rgba(15, 23, 42, .06), 0 2px 6px rgba(15, 23, 42, .04);
+  --shadow-glow: 0 0 20px rgba(79, 125, 243, .15);
+
+  /* Radius — unified */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* Transitions */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+
+  /* Layout */
+  --header-height: 56px;
+  --panel-gap: 20px;
+  --content-padding: 28px;
+}
+
+/* ── Dark Mode ── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --gray-50:  #0f172a;
+    --gray-100: #1e293b;
+    --gray-200: #334155;
+    --gray-300: #475569;
+    --gray-400: #64748b;
+    --gray-500: #94a3b8;
+    --gray-600: #cbd5e1;
+    --gray-700: #e2e8f0;
+    --gray-800: #f1f5f9;
+    --gray-900: #f8fafc;
+
+    --bg-page:      #0b1120;
+    --bg-card:      #111827;
+    --bg-subtle:    #1e293b;
+    --bg-hover:     #1e293b;
+    --border:       #334155;
+    --border-light: #1e293b;
+    --text-primary:   #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-tertiary:  #64748b;
+
+    --shadow-sm:  0 1px 2px rgba(0, 0, 0, .2), 0 1px 3px rgba(0, 0, 0, .15);
+    --shadow-md:  0 4px 12px rgba(0, 0, 0, .25), 0 1px 3px rgba(0, 0, 0, .2);
+    --shadow-lg:  0 8px 24px rgba(0, 0, 0, .3), 0 2px 6px rgba(0, 0, 0, .25);
+  }
+
+  body {
+    background: var(--bg-page);
+    color: var(--text-primary);
+  }
+
+  ::selection {
+    background: var(--brand-900);
+    color: var(--brand-200);
+  }
+
+  .n-card {
+    background: var(--bg-card) !important;
+    border-color: var(--border) !important;
+  }
+
+  .n-input,
+  .n-select {
+    background: var(--bg-card) !important;
+  }
+}
+
+
+/* ── Reset ── */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+#app {
+  width: 100%;
+  height: 100vh;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--gray-400); }
+
+/* ── Global Transitions ── */
+a, button, .n-button, .n-tag {
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out) !important;
+}
+
+/* ── Selection ── */
+::selection {
+  background: var(--brand-100);
+  color: var(--brand-700);
+}
+
+/* ── Utility ── */
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 12px; }
+.mt-4 { margin-top: 16px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-3 { margin-bottom: 12px; }
+.mb-4 { margin-bottom: 16px; }
+.ml-2 { margin-left: 8px; }
+.mr-2 { margin-right: 8px; }
+
+/* ── Micro-interactions ── */
+.n-button:not(.n-button--disabled):hover {
+  transform: translateY(-1px);
+}
+.n-button:not(.n-button--disabled):active {
+  transform: translateY(0);
+}
+
+.n-card {
+  box-shadow: none !important;
+  border-color: var(--border) !important;
+  transition: box-shadow var(--duration-base) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+}
+.n-card:hover {
+  box-shadow: var(--shadow-md) !important;
+}
+
+.n-modal {
+  box-shadow: var(--shadow-lg) !important;
+}
+
+/* ── Focus Ring ── */
+.n-input:focus-within,
+.n-select:focus-within {
+  box-shadow: 0 0 0 3px rgba(79, 125, 243, 0.1);
+}
+
+/* ── Tab Switch Animation ── */
+.n-tabs-tab {
+  position: relative;
+}
+.n-tabs-tab::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: var(--brand-500);
+  transition: width var(--duration-base) var(--ease-out), left var(--duration-base) var(--ease-out);
+}
+.n-tabs-tab--active::after {
+  left: 0;
+  width: 100%;
+}
