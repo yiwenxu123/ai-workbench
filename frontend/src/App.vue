@@ -90,7 +90,7 @@
                 <n-tab-pane name="history">
                   <template #tab><div class="tab-label"><n-icon><ImagesOutline /></n-icon>作品</div></template>
                 </n-tab-pane>
-                <n-tab-pane name="ingest">
+                <n-tab-pane v-if="adminModeEnabled" name="ingest">
                   <template #tab><div class="tab-label"><n-icon><CloudDownloadOutline /></n-icon>入库</div></template>
                 </n-tab-pane>
               </n-tabs>
@@ -107,7 +107,7 @@
                 <div v-show="rightTab === 'history'">
                   <GalleryPanel @convert-to-video="handleGenerateVideo" @edit-image="handleEditImageFromGallery" />
                 </div>
-                <div v-show="rightTab === 'ingest'">
+                <div v-if="adminModeEnabled" v-show="rightTab === 'ingest'">
                   <ContentIngest />
                 </div>
               </div>
@@ -157,7 +157,10 @@ const mainTab = ref('image')
 const rightTab = ref('templates')
 
 const SK = 'ai_studio_panel_'
-const panelOpen = ref(localStorage.getItem(SK + 'open') === 'true')
+const adminModeEnabled = ref(localStorage.getItem('ai_studio_admin_mode') === 'true')
+// 首次访问默认展开右侧面板（让模板/知识/作品/分析等核心功能可见）
+const storedPanelOpen = localStorage.getItem(SK + 'open')
+const panelOpen = ref(storedPanelOpen === null ? true : storedPanelOpen === 'true')
 const windowWidth = ref(typeof window === 'undefined' ? 520 : window.innerWidth)
 const drawerWidth = computed(() => Math.min(520, windowWidth.value))
 

@@ -151,21 +151,28 @@
               @input="onMainPromptInput"
             />
             <div class="term-suggestions" v-if="termSuggestions.length > 0">
-            <span class="suggestions-label">推荐术语：</span>
-            <template v-for="s in visibleSuggestions" :key="s.term.id">
-              <n-tag
-                size="small"
-                :bordered="false"
-                :style="{ backgroundColor: getCategoryColor(s.term.category) + '18', color: getCategoryColor(s.term.category), cursor: 'pointer' }"
-                @click="insertTermSuggestion(s.term)"
-              >
-                + {{ s.term.name }}
-              </n-tag>
-            </template>
-            <n-button v-if="termSuggestions.length > 5 && !showAllTerms" size="tiny" text type="primary" @click="showAllTerms = true">
-              +{{ termSuggestions.length - 5 }} 个更多
-            </n-button>
-          </div>
+              <n-button text size="tiny" class="term-toggle" @click="termSuggestOpen = !termSuggestOpen">
+                <n-icon :component="termSuggestOpen ? ChevronUp : ChevronDown" size="12" />
+                <span class="suggestions-label">推荐术语 ({{ termSuggestions.length }})</span>
+              </n-button>
+              <n-collapse-transition :show="termSuggestOpen">
+                <div class="term-tags">
+                  <template v-for="s in visibleSuggestions" :key="s.term.id">
+                    <n-tag
+                      size="tiny"
+                      :bordered="false"
+                      :style="{ backgroundColor: getCategoryColor(s.term.category) + '10', color: getCategoryColor(s.term.category), cursor: 'pointer' }"
+                      @click="insertTermSuggestion(s.term)"
+                    >
+                      + {{ s.term.name }}
+                    </n-tag>
+                  </template>
+                  <n-button v-if="termSuggestions.length > 5 && !showAllTerms" size="tiny" text type="primary" @click="showAllTerms = true">
+                    +{{ termSuggestions.length - 5 }} 个更多
+                  </n-button>
+                </div>
+              </n-collapse-transition>
+            </div>
         </div>
 
         <!-- 生成按钮：紧跟在提示词下方，无需滚动 -->
@@ -183,7 +190,7 @@
               <path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
           </template>
-          {{ generatorStore.status === 'generating' ? '生成中...' : '生成图片' }}
+          {{ generatorStore.status === 'generating' ? (generatorStore.stageLabel || '生成中') + '...' : '生成图片' }}
         </n-button>
 
         <!-- 折叠参数区：负面词/模型/尺寸/优化器 -->
@@ -358,17 +365,34 @@
 
       <!-- 右侧：生成结果区 -->
       <div class="panel-content">
-        <n-progress
-          v-if="generatorStore.status === 'generating'"
-          type="line"
-          :percentage="Math.round(generatorStore.progress)"
-          :show-indicator="true"
-          class="mb-3"
-        />
+        <div v-if="generatorStore.status === 'generating'" class="generation-feedback mb-3">
+          <div class="feedback-pulse"></div>
+          <div class="feedback-info">
+            <span class="feedback-stage">{{ generatorStore.stageLabel || '准备中' }}</span>
+            <span v-if="generatorStore.estimatedRemaining" class="feedback-eta">
+              约 {{ Math.ceil(generatorStore.estimatedRemaining) }}s
+            </span>
+          </div>
+          <n-progress
+            type="line"
+            :percentage="Math.round(generatorStore.progress)"
+            :show-indicator="false"
+            :height="4"
+          />
+        </div>
 
-        <n-alert v-if="generatorStore.error" type="error" :show-icon="false" class="mb-3">
-          {{ generatorStore.error }}
-        </n-alert>
+        <div v-if="generatorStore.error" class="error-card mb-3">
+          <div class="error-title">{{ getErrorInfo(generatorStore.error).title }}</div>
+          <div class="error-message">{{ getErrorInfo(generatorStore.error).message }}</div>
+          <n-space v-if="getErrorInfo(generatorStore.error).action" class="mt-2">
+            <n-button size="tiny" type="primary" @click="generatorStore.error = null">
+              {{ getErrorInfo(generatorStore.error).action }}
+            </n-button>
+            <n-button size="tiny" quaternary @click="generatorStore.error = null">
+              关闭
+            </n-button>
+          </n-space>
+        </div>
 
         <div v-if="generatorStore.lastImage" class="image-result">
           <div class="result-header">
@@ -580,6 +604,7 @@ import { termCategoryConfig, type TermCategory } from '../data/terminology'
 import type { TermEntry } from '../data/terminology'
 import axios from 'axios'
 import { config as appConfig } from '../config'
+import { getErrorInfo } from '../utils/errorMessages'
 import { optimizePrompt, type OptimizeResult } from '../api/optimize'
 import type { Component } from 'vue'
 
@@ -592,6 +617,7 @@ const message = useMessage()
 const { suggestions: termSuggestions } = useTermSuggestions(computed(() => generatorStore.prompt))
 
 const showAllTerms = ref(false)
+const termSuggestOpen = ref(false)
 const visibleSuggestions = computed(() => {
   const suggestions = termSuggestions.value
   if (showAllTerms.value || suggestions.length <= 5) return suggestions
@@ -702,7 +728,7 @@ const quickTasks: QuickTask[] = [
   },
 ]
 
-const quickCreateOpen = ref(true)
+const quickCreateOpen = ref(false)
 const selectedQuickTask = ref<QuickTask | null>(null)
 const quickTaskInput = ref('')
 const quickTaskRatio = ref('1:1')
@@ -1014,7 +1040,20 @@ const modelOptions = computed(() => {
     }
   }
 
-  return [...serverModels, ...customModels]
+  // 按 provider 分组
+  const all = [...serverModels, ...customModels]
+  const grouped = new Map<string, typeof all>()
+  for (const m of all) {
+    const key = m.provider || 'other'
+    if (!grouped.has(key)) grouped.set(key, [])
+    grouped.get(key)!.push(m)
+  }
+
+  return Array.from(grouped.entries()).map(([key, children]) => ({
+    type: 'group' as const,
+    label: providerLabels[key] || (key === 'other' ? '其他' : key),
+    children: children.map(({ provider: _, ...rest }) => rest),
+  }))
 })
 
 const SIZE_META: Record<string, { ratio: string; label: string; platforms: string }> = {
@@ -1268,51 +1307,10 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-.panel-layout {
-  display: flex;
-  gap: var(--panel-gap, 20px);
-  height: 100%;
-  transition: gap var(--duration-base) var(--ease-out);
-}
-
-/* ── Left Panel ── */
-.panel-sider {
-  flex: 0 0 380px;
-  background: var(--bg-card, #fff);
-  border-radius: var(--radius-md, 10px);
-  padding: 20px;
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  transition: box-shadow var(--duration-base) var(--ease-out), background var(--duration-base) var(--ease-out);
-}
-
-.panel-sider-scroll {
-  overflow-y: auto;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.sider-header {
-  margin-bottom: 20px;
-}
-
 .sider-header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.sider-header h3 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  opacity: 0.7;
 }
 
 /* ── Provider Status Stripe ── */
@@ -1336,47 +1334,6 @@ onUnmounted(() => {
 .stripe-idle { background: #d1d5db; }
 .stripe-none { background: #d1d5db; opacity: 0.4; }
 
-/* ── Right Panel ── */
-.panel-content {
-  flex: 1;
-  background: var(--bg-card, #fff);
-  border-radius: var(--radius-md, 10px);
-  padding: 20px;
-  box-shadow: var(--shadow-sm);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  position: relative;
-  transition: box-shadow var(--duration-base) var(--ease-out), background var(--duration-base) var(--ease-out);
-}
-
-/* ── Responsive ── */
-@media (max-width: 1024px) {
-  .panel-layout {
-    flex-direction: column;
-    gap: 16px;
-    overflow-y: auto;
-  }
-  .panel-sider {
-    flex: none;
-    width: 100%;
-    min-width: 0;
-    max-height: 55vh;
-  }
-  .panel-sider-scroll {
-    overflow-y: auto;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-  }
-  .panel-content {
-    flex: 1;
-    width: 100%;
-    min-width: 0;
-    min-height: 300px;
-  }
-}
-
 /* ── Result Area ── */
 .image-result {
   display: flex;
@@ -1384,89 +1341,6 @@ onUnmounted(() => {
   flex: 1;
   min-height: 0;
 }
-
-.result-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 14px;
-}
-
-.result-title {
-  font-weight: 600;
-  color: var(--text-primary);
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  opacity: 0.7;
-}
-
-/* ── Empty State — Friendly + inviting ── */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 320px;
-  color: var(--text-secondary);
-  gap: 14px;
-}
-.empty-illustration {
-  position: relative;
-  color: var(--gray-300);
-  margin-bottom: 4px;
-}
-.empty-glow {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 120px;
-  height: 120px;
-  background: radial-gradient(circle, rgba(79, 125, 243, 0.12) 0%, transparent 70%);
-  border-radius: 50%;
-  pointer-events: none;
-}
-.empty-illustration svg {
-  position: relative;
-  z-index: 1;
-}
-.empty-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--gray-700);
-  letter-spacing: -0.2px;
-}
-.empty-hint {
-  font-size: 13px;
-  color: var(--gray-400);
-}
-.empty-shortcut {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--gray-400);
-}
-.shortcut-key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 24px;
-  height: 20px;
-  padding: 0 5px;
-  background: var(--gray-50);
-  border: 1px solid var(--gray-200);
-  border-radius: 5px;
-  font-size: 11px;
-  font-family: inherit;
-  color: var(--gray-500);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-.shortcut-label { color: var(--gray-400); }
-.shortcut-sep { color: var(--gray-300); }
 
 /* ── Prompt Field ── */
 .prompt-label {
@@ -1596,6 +1470,17 @@ onUnmounted(() => {
 }
 
 .term-suggestions {
+  margin-top: 6px;
+}
+
+.term-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-tertiary, #94a3b8);
+}
+
+.term-tags {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1748,8 +1633,8 @@ onUnmounted(() => {
 /* ── 任务卡片网格 ── */
 .qc-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
   margin: 10px 0;
 }
 
@@ -1757,8 +1642,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 10px 6px;
+  gap: 6px;
+  padding: 12px 10px;
   border: 1px solid var(--border-light, #eef0f4);
   border-radius: var(--radius-sm, 8px);
   background: transparent;
@@ -1790,15 +1675,15 @@ onUnmounted(() => {
   gap: 1px;
 }
 .qc-card-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-primary, #1a1a2e);
   line-height: 1.3;
 }
 .qc-card-desc {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-tertiary, #9ca3af);
-  line-height: 1.2;
+  line-height: 1.3;
 }
 
 /* ── 选中任务后的表单 ── */
@@ -1880,5 +1765,71 @@ onUnmounted(() => {
   font-size: 11px;
   color: var(--brand-500, #4f7df3);
   opacity: 0.8;
+}
+
+/* ── 生成过程反馈 ── */
+.generation-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--brand-50, #f0f4ff);
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--brand-100, #e0e7ff);
+  position: relative;
+  overflow: hidden;
+}
+
+.feedback-pulse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--brand-500, #4f7df3), transparent);
+  animation: pulse-sweep 2s ease-in-out infinite;
+}
+
+@keyframes pulse-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.feedback-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.feedback-stage {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--brand-600, #4f46e5);
+}
+
+.feedback-eta {
+  font-size: 12px;
+  color: var(--text-tertiary, #94a3b8);
+}
+
+/* ── 错误卡片 ── */
+.error-card {
+  padding: 12px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md, 10px);
+}
+
+.error-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #dc2626;
+  margin-bottom: 4px;
+}
+
+.error-message {
+  font-size: 12px;
+  color: #7f1d1d;
+  line-height: 1.5;
 }
 </style>
