@@ -150,6 +150,7 @@
               @keydown.enter.ctrl="handleGenerate"
               @input="onMainPromptInput"
             />
+            <PromptElementTagger :prompt="generatorStore.prompt" :min-length="3" />
             <div class="term-suggestions" v-if="termSuggestions.length > 0">
               <n-button text size="tiny" class="term-toggle" @click="termSuggestOpen = !termSuggestOpen">
                 <n-icon :component="termSuggestOpen ? ChevronUp : ChevronDown" size="12" />
@@ -596,10 +597,12 @@ import PromptAnalyzer from './learn/PromptAnalyzer.vue'
 import PromptOptimizer from './PromptOptimizer.vue'
 import QuickActions from './QuickActions.vue'
 import ImagePreview from './common/ImagePreview.vue'
+import PromptElementTagger from './common/PromptElementTagger.vue'
 import { getModelSizeConfig, isSizeValidForModel } from '../data/modelSizeConfig'
 import { useTermSuggestions } from '../composables/useTermSuggestions'
 import { useImageZoom } from '../composables/useImageZoom'
 import { useKeyboard } from '../composables/useKeyboard'
+import { useCreationContext, type CreationScene } from '../composables/useCreationContext'
 import { termCategoryConfig, type TermCategory } from '../data/terminology'
 import type { TermEntry } from '../data/terminology'
 import axios from 'axios'
@@ -615,6 +618,33 @@ const dataStore = useDataStore()
 const message = useMessage()
 
 const { suggestions: termSuggestions } = useTermSuggestions(computed(() => generatorStore.prompt))
+
+/* ---- 跨 Tab 创作上下文（useCreationContext） ---- */
+const {
+  setScene,
+  setGenerationResult: setContextGenerationResult,
+  addOptimization: addContextOptimization,
+} = useCreationContext()
+
+/** QuickTask.id → CreationScene 场景映射 */
+const TASK_SCENE_MAP: Record<string, CreationScene> = {
+  ecommerce: 'ecommerce',
+  'social-poster': 'social',
+  presentation: 'presentation',
+  portrait: 'portrait',
+  'image-to-video': 'video',
+  'edit-image': 'edit',
+}
+
+/** 监听生成结果，自动写入创作上下文 */
+watch(
+  () => generatorStore.lastImage,
+  (url) => {
+    if (url) {
+      setContextGenerationResult(url, generatorStore.model, generatorStore.size)
+    }
+  }
+)
 
 const showAllTerms = ref(false)
 const termSuggestOpen = ref(false)
@@ -784,6 +814,10 @@ function selectQuickTask(task: QuickTask) {
   if (task.recommendedSize === '1440x2560') quickTaskRatio.value = '9:16'
   else if (task.recommendedSize === '2560x1440') quickTaskRatio.value = '16:9'
   else quickTaskRatio.value = '1:1'
+
+  // 写入创作上下文：场景 + 意图
+  const scene = TASK_SCENE_MAP[task.id] || 'general'
+  setScene(scene)
 }
 
 function applyAIResult() {
@@ -832,6 +866,10 @@ async function doQuickAIOptimize() {
     )
     if (result.success) {
       quickAIResult.value = result
+      // 写入创作上下文：优化历史
+      if (result.optimizedPrompt) {
+        addContextOptimization(result.optimizedPrompt, result.explanation || 'AI 优化')
+      }
       message.success('AI 优化完成')
     } else {
       message.error(result.error || '优化失败')
@@ -889,18 +927,58 @@ function resolveQuickSize(ratio: string): string {
   return map[ratio] || '1024x1024'
 }
 
-/** 基于当前提示词匹配相关知识条目（取前 8 条） */
+/**
+ * 基于当前提示词匹配相关知识条目（取前 8 条）
+ * 评分逻辑（参考 useTermSuggestions.localMatch）：
+ *   - 名字完全匹配: 1.0
+ *   - 名字子串匹配: 0.6
+ *   - 描述关键词匹配: 按命中数 × 0.3 上限 0.9
+ * 案例权重 ×1.5（案例比术语更有学习价值）
+ */
 const learningItems = computed(() => {
-  const prompt = generatorStore.prompt.toLowerCase()
-  if (!prompt || !dataStore.loaded) return []
-  const words = prompt.split(/[\s,，、]+/).filter(w => w.length > 1)
+  const text = generatorStore.prompt.trim()
+  if (!text || !dataStore.loaded) return []
+  const textLower = text.toLowerCase()
 
-  const matches = (dataStore.caseEntries as any[]).concat(dataStore.terms as any[]).filter((item: any) => {
-    const text = ((item.content || item.title || item.name || '') + ' ' + (item.description || '')).toLowerCase()
-    return words.some(w => text.includes(w))
-  })
+  function scoreItem(item: any): number {
+    const name = item.name || item.title || item.content || ''
+    const desc = item.description || ''
+    if (!name && !desc) return 0
 
-  return matches.slice(0, 8)
+    let score = 0
+    if (name && name.length >= 2) {
+      if (text.includes(name)) score = Math.max(score, 1.0)
+      else if (textLower.includes(name.toLowerCase())) score = Math.max(score, 0.6)
+    }
+    if (desc) {
+      const words = desc.split(/[，,、。.；;！!？?\s]+/).filter((w: string) => w.length >= 2)
+      let hit = 0
+      for (const w of words) {
+        if (text.includes(w)) hit++
+      }
+      if (hit > 0) {
+        const descScore = Math.min(0.9, 0.3 * hit)
+        if (descScore > score) score = descScore
+      }
+    }
+    return score
+  }
+
+  const scored: Array<{ item: any; score: number }> = []
+  for (const term of dataStore.terms as any[]) {
+    const s = scoreItem(term)
+    if (s > 0) scored.push({ item: term, score: s })
+  }
+  for (const c of dataStore.caseEntries as any[]) {
+    const s = scoreItem(c)
+    if (s > 0) {
+      // 案例权重 +50%（更实用）
+      scored.push({ item: c, score: s * 1.5 })
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score)
+  return scored.slice(0, 8).map((s) => s.item)
 })
 
 function insertTerm(item: any) {

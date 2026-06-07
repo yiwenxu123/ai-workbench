@@ -134,6 +134,7 @@ import {
 import { Sparkles } from 'lucide-vue-next'
 import GeneratePanel from './components/GeneratePanel.vue'
 import { initDatabase } from './db'
+import { useKeyboard } from './composables/useKeyboard'
 
 const KnowledgeBase = defineAsyncComponent(() => import('./components/KnowledgeBase.vue'))
 const TemplateCenter = defineAsyncComponent(() => import('./components/TemplateCenter.vue'))
@@ -176,6 +177,38 @@ function togglePanel() {
   panelOpen.value = !panelOpen.value
   saveState()
 }
+
+function closeDrawer() {
+  if (panelOpen.value) {
+    panelOpen.value = false
+    saveState()
+  }
+}
+
+function openConfig() {
+  configStore.showConfigModal = true
+}
+
+/* ---- 全局快捷键 ---- */
+useKeyboard([
+  {
+    key: ',',
+    ctrl: true,
+    handler: () => openConfig(),
+    description: '打开配置',
+  },
+  {
+    key: 'Escape',
+    handler: (e) => {
+      // 优先关闭 Drawer（如果打开），再让 n-modal/drawer 处理其他 Esc
+      if (panelOpen.value) {
+        closeDrawer()
+        e.preventDefault()
+      }
+    },
+    description: '关闭抽屉/弹窗',
+  },
+])
 
 const BRAND_THEME_OVERRIDES: GlobalThemeOverrides = {
   common: {
