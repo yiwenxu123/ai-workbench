@@ -1,31 +1,87 @@
 """
 SQLite + FTS5 知识库存储
 替代 JSON 文件，支持全文搜索
+
+重构说明：
+- 使用线程本地连接池，避免每次操作新建/关闭连接
+- 统一反序列化函数，消除三个 _deserialize_* 的重复代码
+- 批量操作使用单事务包裹
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Generator, Optional
 
 DB_PATH = Path(__file__).parent / "data" / "knowledge.db"
 
+# ── 线程本地连接池 ─────────────────────────────────────────────────
 
-def get_connection() -> sqlite3.Connection:
+_local = threading.local()
+
+
+def _get_pooled_connection() -> sqlite3.Connection:
+    """获取当前线程的数据库连接（懒创建，自动复用）"""
+    conn = getattr(_local, "connection", None)
+    try:
+        if conn is not None:
+            conn.execute("SELECT 1")
+            return conn
+    except (sqlite3.ProgrammingError, sqlite3.OperationalError):
+        _local.connection = None
+
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    _local.connection = conn
     return conn
 
 
-def init_db() -> None:
-    """初始化数据库 schema（幂等）"""
-    conn = get_connection()
+@contextmanager
+def get_db() -> Generator[sqlite3.Connection, None, None]:
+    """数据库连接上下文管理器，自动 commit/rollback"""
+    conn = _get_pooled_connection()
     try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def get_connection() -> sqlite3.Connection:
+    """获取原始连接（兼容 embedding_worker 等外部调用方）"""
+    return _get_pooled_connection()
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """增量 schema 迁移：为已有表添加缺失的列"""
+    migrations = [
+        ("templates", "tips", "TEXT DEFAULT '[]'"),
+    ]
+    for table, column, col_type in migrations:
+        try:
+            conn.execute(f"SELECT {column} FROM {table} LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+
+
+def init_db() -> None:
+    """初始化数据库 schema（幂等）。同时清除当前线程的缓存连接，确保使用最新的 DB_PATH。"""
+    old_conn = getattr(_local, "connection", None)
+    if old_conn is not None:
+        try:
+            old_conn.close()
+        except Exception:
+            pass
+        _local.connection = None
+    with get_db() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS knowledge (
                 id TEXT PRIMARY KEY,
@@ -60,6 +116,7 @@ def init_db() -> None:
                 task_type TEXT DEFAULT 'image',
                 audience TEXT DEFAULT '',
                 required_fields TEXT DEFAULT '[]',
+                tips TEXT DEFAULT '[]',
                 recommended_model TEXT DEFAULT '',
                 recommended_size TEXT DEFAULT '',
                 source TEXT DEFAULT '',
@@ -95,7 +152,6 @@ def init_db() -> None:
         """)
 
         # FTS5 虚拟表 — 使用 unicode61 tokenizer
-        # 注意：FTS5 不支持 IF NOT EXISTS，用 try 包裹
         for table_name, columns in [
             ("knowledge_fts", "title, content, tags, tips"),
             ("templates_fts", "title, description, prompt, tags"),
@@ -108,14 +164,11 @@ def init_db() -> None:
             except sqlite3.OperationalError:
                 pass  # 已存在则跳过
 
-        conn.commit()
-    finally:
-        conn.close()
+        # Schema 迁移：为已有表添加缺失的列
+        _migrate_schema(conn)
 
 
-def _row_to_dict(row: sqlite3.Row) -> dict:
-    return dict(row)
-
+# ── 通用工具 ──────────────────────────────────────────────────────
 
 def _json_load(val: Any, default: Any = None) -> Any:
     if val is None:
@@ -128,30 +181,93 @@ def _json_load(val: Any, default: Any = None) -> Any:
         return default if default is not None else []
 
 
-# ── Knowledge CRUD ────────────────────────────────────────────────────
+def _deserialize_row(row: sqlite3.Row, json_fields: list[str], rename_map: dict[str, str]) -> dict:
+    """统一反序列化：JSON 字段解析 + 字段重命名
+
+    Args:
+        row: SQLite Row 对象
+        json_fields: 需要 JSON 解析的字段名列表
+        rename_map: snake_case → camelCase 的字段映射
+    """
+    d = dict(row)
+    for field in json_fields:
+        if field in d:
+            d[field] = _json_load(d.get(field), [] if field != "scene_relevance" else {})
+    for old, new in rename_map.items():
+        if old in d:
+            d[new] = d.pop(old)
+    # 移除内部字段
+    d.pop("rank", None)
+    d.pop("_score", None)
+    return d
+
+
+# 各表的反序列化配置
+_KNOWLEDGE_JSON = ["tips", "tags", "related_terms", "examples", "scene_relevance"]
+_KNOWLEDGE_RENAME = {
+    "usage_count": "usageCount",
+    "negative_prompt": "negativePrompt",
+    "related_terms": "relatedTerms",
+    "last_verified": "lastVerified",
+    "scene_relevance": "sceneRelevance",
+    "created_at": "createdAt",
+    "updated_at": "updatedAt",
+    "embedding_status": "embeddingStatus",
+}
+
+_TEMPLATE_JSON = ["tags", "required_fields", "tips"]
+_TEMPLATE_RENAME = {
+    "title": "name",
+    "negative_prompt": "negativePrompt",
+    "task_type": "taskType",
+    "required_fields": "fields",
+    "recommended_model": "recommendedModel",
+    "recommended_size": "recommendedSize",
+    "created_at": "createdAt",
+    "updated_at": "updatedAt",
+}
+
+_CASE_JSON = ["tips", "tags"]
+_CASE_RENAME = {
+    "negative_prompt": "negativePrompt",
+    "source_url": "sourceUrl",
+    "created_at": "createdAt",
+    "updated_at": "updatedAt",
+}
+
+
+def _deserialize_knowledge(row: sqlite3.Row) -> dict:
+    return _deserialize_row(row, _KNOWLEDGE_JSON, _KNOWLEDGE_RENAME)
+
+
+def _deserialize_template(row: sqlite3.Row) -> dict:
+    return _deserialize_row(row, _TEMPLATE_JSON, _TEMPLATE_RENAME)
+
+
+def _deserialize_case(row: sqlite3.Row) -> dict:
+    d = _deserialize_row(row, _CASE_JSON, _CASE_RENAME)
+    if d.get("size"):
+        d["parameters"] = {"size": d["size"]}
+    return d
+
+
+# ── Knowledge CRUD ────────────────────────────────────────────────
 
 def knowledge_list_all() -> list[dict]:
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         rows = conn.execute("SELECT * FROM knowledge ORDER BY quality DESC").fetchall()
         return [_deserialize_knowledge(r) for r in rows]
-    finally:
-        conn.close()
 
 
 def knowledge_get_by_id(kid: str) -> Optional[dict]:
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         row = conn.execute("SELECT * FROM knowledge WHERE id = ?", (kid,)).fetchone()
         return _deserialize_knowledge(row) if row else None
-    finally:
-        conn.close()
 
 
 def knowledge_upsert(item: dict) -> None:
-    conn = get_connection()
-    try:
-        now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with get_db() as conn:
         conn.execute("""
             INSERT INTO knowledge (id, type, title, content, category, quality, usage_count,
                 tips, prompt, negative_prompt, model, scene_relevance, tags, related_terms,
@@ -186,35 +302,24 @@ def knowledge_upsert(item: dict) -> None:
             item.get("createdAt", now),
             now,
         ))
-        # 更新 FTS 索引
         conn.execute("DELETE FROM knowledge_fts WHERE rowid = (SELECT rowid FROM knowledge WHERE id = ?)", (item.get("id", ""),))
         conn.execute("""
             INSERT INTO knowledge_fts(rowid, title, content, tags, tips)
             SELECT rowid, title, content, tags, tips FROM knowledge WHERE id = ?
         """, (item.get("id", ""),))
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def knowledge_delete(kid: str) -> None:
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         conn.execute("DELETE FROM knowledge_fts WHERE rowid = (SELECT rowid FROM knowledge WHERE id = ?)", (kid,))
         conn.execute("DELETE FROM knowledge WHERE id = ?", (kid,))
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def knowledge_search(query: str, scene: str = "general", type_filter: list[str] | None = None, limit: int = 10) -> list[dict]:
     """FTS5 全文搜索 + sceneRelevance 评分加权"""
-    conn = get_connection()
-    try:
-        # 构建 FTS5 查询：对中文使用 2-gram + 3-gram 匹配
+    with get_db() as conn:
         fts_query = _build_fts_query(query)
         if not fts_query:
-            # 无有效查询词时，按 quality 排序返回
             sql = "SELECT * FROM knowledge"
             params: list = []
             if type_filter:
@@ -226,7 +331,6 @@ def knowledge_search(query: str, scene: str = "general", type_filter: list[str] 
             rows = conn.execute(sql, params).fetchall()
             return [_deserialize_knowledge(r) for r in rows]
 
-        # FTS5 搜索
         sql = """
             SELECT k.*, bm25(knowledge_fts) AS rank
             FROM knowledge_fts
@@ -239,15 +343,13 @@ def knowledge_search(query: str, scene: str = "general", type_filter: list[str] 
             sql += f" AND k.type IN ({placeholders})"
             params.extend(type_filter)
         sql += " ORDER BY rank LIMIT ?"
-        params.append(limit * 3)  # 多取一些，后续加权重排序
+        params.append(limit * 3)
 
         try:
             rows = conn.execute(sql, params).fetchall()
         except sqlite3.OperationalError:
-            # FTS 查询语法错误时回退到 LIKE
             return _knowledge_like_search(conn, query, scene, type_filter, limit)
 
-        # 综合排序：FTS rank + sceneRelevance + quality
         results = []
         for row in rows:
             entry = _deserialize_knowledge(row)
@@ -264,8 +366,6 @@ def knowledge_search(query: str, scene: str = "general", type_filter: list[str] 
 
         results.sort(key=lambda x: -x["_score"])
         return results[:limit]
-    finally:
-        conn.close()
 
 
 def _build_fts_query(query: str) -> str:
@@ -277,14 +377,12 @@ def _build_fts_query(query: str) -> str:
     query = query.strip().lower()
     if not query:
         return ""
-    # 按空格拆分为多个查询词
     parts = [p for p in query.split() if p]
     if not parts:
         return ""
     tokens = []
     for part in parts:
         if any("一" <= c <= "鿿" for c in part):
-            # 中文：用完整短语匹配（FTS5 会逐字索引，短语查询可匹配连续字符）
             tokens.append(f'"{part}"')
         else:
             tokens.append(f'"{part}"')
@@ -306,115 +404,94 @@ def _knowledge_like_search(conn: sqlite3.Connection, query: str, scene: str, typ
     return [_deserialize_knowledge(r) for r in rows]
 
 
-def _deserialize_knowledge(row: sqlite3.Row) -> dict:
-    d = _row_to_dict(row)
-    d["tips"] = _json_load(d.get("tips"), [])
-    d["tags"] = _json_load(d.get("tags"), [])
-    d["relatedTerms"] = _json_load(d.get("related_terms"), [])
-    d["examples"] = _json_load(d.get("examples"), [])
-    d["sceneRelevance"] = _json_load(d.get("scene_relevance"), {})
-    d["usageCount"] = d.pop("usage_count", 0)
-    d["negativePrompt"] = d.pop("negative_prompt", "")
-    d["lastVerified"] = d.pop("last_verified", "")
-    d["createdAt"] = d.pop("created_at", "")
-    d["updatedAt"] = d.pop("updated_at", "")
-    d["embeddingStatus"] = d.pop("embedding_status", "pending")
-    d.pop("rank", None)
-    d.pop("_score", None)
-    return d
-
-
-# ── Templates CRUD ────────────────────────────────────────────────────
+# ── Templates CRUD ────────────────────────────────────────────────
 
 def templates_list_all() -> list[dict]:
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         rows = conn.execute("SELECT * FROM templates ORDER BY category").fetchall()
         return [_deserialize_template(r) for r in rows]
-    finally:
-        conn.close()
 
 
 def templates_list_by_task(task_type: str) -> list[dict]:
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         rows = conn.execute("SELECT * FROM templates WHERE task_type = ? ORDER BY category", (task_type,)).fetchall()
         return [_deserialize_template(r) for r in rows]
-    finally:
-        conn.close()
+
+
+def _normalize_template_fields(item: dict) -> dict:
+    """统一模板字段名：兼容 JSON 原始格式和 camelCase 格式"""
+    return {
+        "id": item.get("id", ""),
+        "title": item.get("title") or item.get("name") or "",
+        "category": item.get("category", ""),
+        "description": item.get("description", ""),
+        "prompt": item.get("prompt", ""),
+        "negativePrompt": item.get("negativePrompt", ""),
+        "tags": item.get("tags", []),
+        "taskType": item.get("taskType") or item.get("task_type") or "image",
+        "audience": item.get("audience", ""),
+        "requiredFields": item.get("requiredFields") or item.get("required_fields") or item.get("fields") or [],
+        "tips": item.get("tips", []),
+        "recommendedModel": item.get("recommendedModel") or item.get("model") or "",
+        "recommendedSize": item.get("recommendedSize") or item.get("size") or "",
+        "source": item.get("source") or item.get("_source") or "",
+        "createdAt": item.get("createdAt") or item.get("created_at") or "",
+    }
+
+
+def _template_row_values(item: dict, now: str) -> tuple:
+    """从规范化的模板 dict 提取 INSERT 参数"""
+    n = _normalize_template_fields(item)
+    return (
+        n["id"], n["title"], n["category"], n["description"], n["prompt"],
+        n["negativePrompt"],
+        json.dumps(_json_load(n["tags"], []), ensure_ascii=False),
+        n["taskType"], n["audience"],
+        json.dumps(_json_load(n["requiredFields"], []), ensure_ascii=False),
+        json.dumps(_json_load(n["tips"], []), ensure_ascii=False),
+        n["recommendedModel"], n["recommendedSize"],
+        n["source"], n["createdAt"] or now, now,
+    )
+
+
+_INSERT_TPL_COLS = """INSERT INTO templates (id, title, category, description, prompt, negative_prompt,
+    tags, task_type, audience, required_fields, tips, recommended_model, recommended_size,
+    source, created_at, updated_at)"""
+_INSERT_TPL_PLACEHOLDERS = "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+_UPSERT_TPL_ON_CONFLICT = """ON CONFLICT(id) DO UPDATE SET
+    title=excluded.title, category=excluded.category, description=excluded.description,
+    prompt=excluded.prompt, negative_prompt=excluded.negative_prompt,
+    tags=excluded.tags, task_type=excluded.task_type, audience=excluded.audience,
+    required_fields=excluded.required_fields, tips=excluded.tips,
+    recommended_model=excluded.recommended_model, recommended_size=excluded.recommended_size,
+    source=excluded.source, updated_at=excluded.updated_at"""
 
 
 def templates_upsert(item: dict) -> None:
-    conn = get_connection()
-    try:
-        now = time.strftime("%Y-%m-%dT%H:%M:%S")
-        conn.execute("""
-            INSERT INTO templates (id, title, category, description, prompt, negative_prompt,
-                tags, task_type, audience, required_fields, recommended_model, recommended_size,
-                source, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                title=excluded.title, category=excluded.category, description=excluded.description,
-                prompt=excluded.prompt, negative_prompt=excluded.negative_prompt,
-                tags=excluded.tags, task_type=excluded.task_type, audience=excluded.audience,
-                required_fields=excluded.required_fields, recommended_model=excluded.recommended_model,
-                recommended_size=excluded.recommended_size, source=excluded.source,
-                updated_at=excluded.updated_at
-        """, (
-            item.get("id", ""),
-            item.get("title", ""),
-            item.get("category", ""),
-            item.get("description", ""),
-            item.get("prompt", ""),
-            item.get("negativePrompt", ""),
-            json.dumps(_json_load(item.get("tags"), []), ensure_ascii=False),
-            item.get("taskType", "image"),
-            item.get("audience", ""),
-            json.dumps(_json_load(item.get("requiredFields"), []), ensure_ascii=False),
-            item.get("recommendedModel", ""),
-            item.get("recommendedSize", ""),
-            item.get("source", ""),
-            item.get("createdAt", now),
-            now,
-        ))
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with get_db() as conn:
+        conn.execute(
+            f"{_INSERT_TPL_COLS} {_INSERT_TPL_PLACEHOLDERS} {_UPSERT_TPL_ON_CONFLICT}",
+            _template_row_values(item, now),
+        )
         conn.execute("DELETE FROM templates_fts WHERE rowid = (SELECT rowid FROM templates WHERE id = ?)", (item.get("id", ""),))
         conn.execute("""
             INSERT INTO templates_fts(rowid, title, description, prompt, tags)
             SELECT rowid, title, description, prompt, tags FROM templates WHERE id = ?
         """, (item.get("id", ""),))
-        conn.commit()
-    finally:
-        conn.close()
 
 
-def _deserialize_template(row: sqlite3.Row) -> dict:
-    d = _row_to_dict(row)
-    d["tags"] = _json_load(d.get("tags"), [])
-    d["requiredFields"] = _json_load(d.get("required_fields"), [])
-    d["negativePrompt"] = d.pop("negative_prompt", "")
-    d["taskType"] = d.pop("task_type", "image")
-    d["recommendedModel"] = d.pop("recommended_model", "")
-    d["recommendedSize"] = d.pop("recommended_size", "")
-    d["createdAt"] = d.pop("created_at", "")
-    d["updatedAt"] = d.pop("updated_at", "")
-    return d
-
-
-# ── Cases CRUD ────────────────────────────────────────────────────────
+# ── Cases CRUD ────────────────────────────────────────────────────
 
 def cases_list_all() -> list[dict]:
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         rows = conn.execute("SELECT * FROM cases ORDER BY created_at DESC").fetchall()
         return [_deserialize_case(r) for r in rows]
-    finally:
-        conn.close()
 
 
 def cases_upsert(item: dict) -> None:
-    conn = get_connection()
-    try:
-        now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with get_db() as conn:
         conn.execute("""
             INSERT INTO cases (id, name, category, description, prompt, negative_prompt,
                 model, size, tips, tags, author, source_url, created_at, updated_at)
@@ -446,67 +523,122 @@ def cases_upsert(item: dict) -> None:
             INSERT INTO cases_fts(rowid, name, description, prompt, tags, tips)
             SELECT rowid, name, description, prompt, tags, tips FROM cases WHERE id = ?
         """, (item.get("id", ""),))
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def cases_delete(cid: str) -> None:
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         conn.execute("DELETE FROM cases_fts WHERE rowid = (SELECT rowid FROM cases WHERE id = ?)", (cid,))
         conn.execute("DELETE FROM cases WHERE id = ?", (cid,))
-        conn.commit()
-    finally:
-        conn.close()
 
 
-def _deserialize_case(row: sqlite3.Row) -> dict:
-    d = _row_to_dict(row)
-    d["tips"] = _json_load(d.get("tips"), [])
-    d["tags"] = _json_load(d.get("tags"), [])
-    d["negativePrompt"] = d.pop("negative_prompt", "")
-    d["sourceUrl"] = d.pop("source_url", "")
-    d["createdAt"] = d.pop("created_at", "")
-    d["updatedAt"] = d.pop("updated_at", "")
-    # 保持与旧格式兼容
-    if d.get("size"):
-        d["parameters"] = {"size": d["size"]}
-    return d
-
-
-# ── 批量操作 ──────────────────────────────────────────────────────────
+# ── 批量操作 ──────────────────────────────────────────────────────
 
 def bulk_insert_knowledge(items: list[dict]) -> int:
-    count = 0
-    for item in items:
-        knowledge_upsert(item)
-        count += 1
-    return count
+    """批量插入知识条目（单事务）"""
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with get_db() as conn:
+        for item in items:
+            conn.execute("""
+                INSERT INTO knowledge (id, type, title, content, category, quality, usage_count,
+                    tips, prompt, negative_prompt, model, scene_relevance, tags, related_terms,
+                    examples, last_verified, created_at, updated_at, embedding_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                ON CONFLICT(id) DO UPDATE SET
+                    type=excluded.type, title=excluded.title, content=excluded.content,
+                    category=excluded.category, quality=excluded.quality,
+                    usage_count=excluded.usage_count, tips=excluded.tips,
+                    prompt=excluded.prompt, negative_prompt=excluded.negative_prompt,
+                    model=excluded.model, scene_relevance=excluded.scene_relevance,
+                    tags=excluded.tags, related_terms=excluded.related_terms,
+                    examples=excluded.examples, last_verified=excluded.last_verified,
+                    updated_at=excluded.updated_at, embedding_status='pending'
+            """, (
+                item.get("id", ""),
+                item.get("type", "term"),
+                item.get("title", ""),
+                item.get("content", ""),
+                item.get("category", ""),
+                item.get("quality", 0.0),
+                item.get("usageCount", 0),
+                json.dumps(_json_load(item.get("tips"), []), ensure_ascii=False),
+                item.get("prompt", ""),
+                item.get("negativePrompt", ""),
+                item.get("model", ""),
+                json.dumps(_json_load(item.get("sceneRelevance"), {}), ensure_ascii=False),
+                json.dumps(_json_load(item.get("tags"), []), ensure_ascii=False),
+                json.dumps(_json_load(item.get("relatedTerms"), []), ensure_ascii=False),
+                json.dumps(_json_load(item.get("examples"), []), ensure_ascii=False),
+                item.get("lastVerified", ""),
+                item.get("createdAt", now),
+                now,
+            ))
+            conn.execute("DELETE FROM knowledge_fts WHERE rowid = (SELECT rowid FROM knowledge WHERE id = ?)", (item.get("id", ""),))
+            conn.execute("""
+                INSERT INTO knowledge_fts(rowid, title, content, tags, tips)
+                SELECT rowid, title, content, tags, tips FROM knowledge WHERE id = ?
+            """, (item.get("id", ""),))
+    return len(items)
 
 
 def bulk_insert_templates(items: list[dict]) -> int:
-    count = 0
-    for item in items:
-        templates_upsert(item)
-        count += 1
-    return count
+    """批量插入模板（单事务）"""
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with get_db() as conn:
+        for item in items:
+            conn.execute(
+                f"{_INSERT_TPL_COLS} {_INSERT_TPL_PLACEHOLDERS} {_UPSERT_TPL_ON_CONFLICT}",
+                _template_row_values(item, now),
+            )
+            conn.execute("DELETE FROM templates_fts WHERE rowid = (SELECT rowid FROM templates WHERE id = ?)", (item.get("id", ""),))
+            conn.execute("""
+                INSERT INTO templates_fts(rowid, title, description, prompt, tags)
+                SELECT rowid, title, description, prompt, tags FROM templates WHERE id = ?
+            """, (item.get("id", ""),))
+    return len(items)
 
 
 def bulk_insert_cases(items: list[dict]) -> int:
-    count = 0
-    for item in items:
-        cases_upsert(item)
-        count += 1
-    return count
+    """批量插入案例（单事务）"""
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with get_db() as conn:
+        for item in items:
+            conn.execute("""
+                INSERT INTO cases (id, name, category, description, prompt, negative_prompt,
+                    model, size, tips, tags, author, source_url, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name=excluded.name, category=excluded.category, description=excluded.description,
+                    prompt=excluded.prompt, negative_prompt=excluded.negative_prompt,
+                    model=excluded.model, size=excluded.size, tips=excluded.tips,
+                    tags=excluded.tags, author=excluded.author, source_url=excluded.source_url,
+                    updated_at=excluded.updated_at
+            """, (
+                item.get("id", ""),
+                item.get("name", ""),
+                item.get("category", ""),
+                item.get("description", ""),
+                item.get("prompt", ""),
+                item.get("negativePrompt", ""),
+                item.get("model", ""),
+                item.get("size", "") or (item.get("parameters", {}) or {}).get("size", ""),
+                json.dumps(_json_load(item.get("tips"), []), ensure_ascii=False),
+                json.dumps(_json_load(item.get("tags"), []), ensure_ascii=False),
+                item.get("author", ""),
+                item.get("sourceUrl", ""),
+                item.get("createdAt", now),
+                now,
+            ))
+            conn.execute("DELETE FROM cases_fts WHERE rowid = (SELECT rowid FROM cases WHERE id = ?)", (item.get("id", ""),))
+            conn.execute("""
+                INSERT INTO cases_fts(rowid, name, description, prompt, tags, tips)
+                SELECT rowid, name, description, prompt, tags, tips FROM cases WHERE id = ?
+            """, (item.get("id", ""),))
+    return len(items)
 
 
 def get_counts() -> dict[str, int]:
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         k = conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
         t = conn.execute("SELECT COUNT(*) FROM templates").fetchone()[0]
         c = conn.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
         return {"knowledge": k, "templates": t, "cases": c}
-    finally:
-        conn.close()

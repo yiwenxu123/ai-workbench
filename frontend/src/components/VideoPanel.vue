@@ -186,16 +186,18 @@
           class="mb-3"
         />
 
-        <n-alert
-          v-if="videoStore.error"
-          type="error"
-          class="mb-3"
-          :show-icon="false"
-          closable
-          @close="videoStore.error = null"
-        >
-          {{ videoStore.error }}
-        </n-alert>
+        <div v-if="videoStore.error" class="error-card mb-3">
+          <div class="error-title">{{ getErrorInfo(videoStore.error).title }}</div>
+          <div class="error-message">{{ getErrorInfo(videoStore.error).message }}</div>
+          <n-space class="mt-2">
+            <n-button v-if="getErrorInfo(videoStore.error).action" size="tiny" type="primary" @click="videoStore.error = null">
+              {{ getErrorInfo(videoStore.error).action }}
+            </n-button>
+            <n-button size="tiny" quaternary @click="videoStore.error = null">
+              关闭
+            </n-button>
+          </n-space>
+        </div>
 
         <div v-if="videoStore.lastVideo" class="video-result-container">
           <div class="result-header">
@@ -258,6 +260,7 @@ import { useConfigStore } from '../stores/config'
 import { useProviderStore } from '../stores/provider'
 import { shotTypes, cameraMovements, cameraAngles, videoDurations, videoResolutions } from '../data/shotLanguage'
 import { videoModels } from '../data/videoTemplates'
+import { getErrorInfo } from '../utils/errorMessages'
 import VideoTemplateWizard from './VideoTemplateWizard.vue'
 import type { UploadCustomRequestOptions } from 'naive-ui'
 
@@ -351,145 +354,6 @@ function handleVideoError() {
   flex-direction: column;
 }
 
-.panel-layout {
-  display: flex;
-  gap: var(--panel-gap, 20px);
-  height: 100%;
-  transition: gap var(--duration-base) var(--ease-out);
-}
-
-.panel-sider {
-  flex: 0 0 380px;
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  box-shadow: var(--shadow-sm);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  transition: box-shadow var(--duration-base) var(--ease-out), background var(--duration-base) var(--ease-out);
-}
-
-.sider-header h3 {
-  margin: 0 0 20px 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  opacity: 0.7;
-}
-
-.panel-content {
-  flex: 1;
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  box-shadow: var(--shadow-sm);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  position: relative;
-  transition: box-shadow var(--duration-base) var(--ease-out), background var(--duration-base) var(--ease-out);
-}
-
-@media (max-width: 1024px) {
-  .panel-layout {
-    flex-direction: column;
-    gap: 16px;
-    overflow-y: auto;
-  }
-  .panel-sider {
-    flex: none;
-    max-height: 55vh;
-  }
-  .panel-content {
-    flex: 1;
-    min-height: 300px;
-  }
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 320px;
-  color: var(--text-secondary);
-  gap: 14px;
-}
-.empty-illustration {
-  position: relative;
-  color: var(--gray-300);
-  margin-bottom: 4px;
-}
-.empty-glow {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 120px;
-  height: 120px;
-  background: radial-gradient(circle, rgba(79, 125, 243, 0.12) 0%, transparent 70%);
-  border-radius: 50%;
-  pointer-events: none;
-}
-.empty-illustration svg {
-  position: relative;
-  z-index: 1;
-}
-.empty-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--gray-700);
-  letter-spacing: -0.2px;
-}
-.empty-hint {
-  font-size: 13px;
-  color: var(--gray-400);
-}
-.empty-shortcut {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--gray-400);
-}
-.shortcut-key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 24px;
-  height: 20px;
-  padding: 0 5px;
-  background: var(--gray-50);
-  border: 1px solid var(--gray-200);
-  border-radius: 5px;
-  font-size: 11px;
-  font-family: inherit;
-  color: var(--gray-500);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-.shortcut-label { color: var(--gray-400); }
-
-.result-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.result-title {
-  font-weight: 600;
-  color: var(--text-primary);
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  opacity: 0.7;
-}
-
 .video-result-container {
   display: flex;
   flex-direction: column;
@@ -547,4 +411,25 @@ function handleVideoError() {
 .mt-2 { margin-top: 8px; }
 .mt-3 { margin-top: 12px; }
 .mb-3 { margin-bottom: 12px; }
+
+/* ── 错误卡片 ── */
+.error-card {
+  padding: 12px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md, 10px);
+}
+
+.error-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #dc2626;
+  margin-bottom: 4px;
+}
+
+.error-message {
+  font-size: 12px;
+  color: #7f1d1d;
+  line-height: 1.5;
+}
 </style>

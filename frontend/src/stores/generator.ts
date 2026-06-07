@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { apiService } from '../api'
 import { useProviderStore } from './provider'
 import { useHistoryStore } from './history'
@@ -7,6 +7,14 @@ import { config } from '../config'
 import type { GenerateParams } from '../types'
 
 export type GenerateStatus = 'idle' | 'generating' | 'success' | 'error'
+export type GenerateStage = 'preparing' | 'submitting' | 'processing' | 'downloading' | null
+
+const STAGE_LABELS: Record<string, string> = {
+  preparing: '准备中',
+  submitting: '提交请求',
+  processing: 'AI 创作中',
+  downloading: '下载结果',
+}
 
 export const useGeneratorStore = defineStore('generator', () => {
   const prompt = ref('')
@@ -18,10 +26,14 @@ export const useGeneratorStore = defineStore('generator', () => {
   const cfgScale = ref<number | undefined>(undefined)
   const sampler = ref<string | undefined>(undefined)
   const status = ref<GenerateStatus>('idle')
+  const stage = ref<GenerateStage>(null)
   const progress = ref(0)
   const lastImage = ref<string | null>(null)
   const error = ref<string | null>(null)
   const generationTime = ref<number | null>(null)
+  const estimatedRemaining = ref<number | null>(null)
+
+  const stageLabel = computed(() => stage.value ? STAGE_LABELS[stage.value] : '')
 
   function validatePrompt(): string | null {
     const trimmed = prompt.value.trim()
@@ -50,11 +62,34 @@ export const useGeneratorStore = defineStore('generator', () => {
     }
 
     status.value = 'generating'
+    stage.value = 'preparing'
     progress.value = 0
     lastImage.value = null
     generationTime.value = null
+    estimatedRemaining.value = null
 
     const startTime = Date.now()
+
+    // 阶段进度映射
+    const stageTimers: ReturnType<typeof setTimeout>[] = []
+    const advanceStage = (s: GenerateStage, pct: number, delay: number) => {
+      stageTimers.push(setTimeout(() => {
+        stage.value = s
+        progress.value = pct
+      }, delay))
+    }
+    advanceStage('submitting', 10, 200)
+    advanceStage('processing', 30, 800)
+    // processing 阶段持续估算剩余时间
+    const estimateInterval = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000
+      if (elapsed > 2) {
+        // 估算总时长约 8-15 秒，根据已用时间线性推算
+        const estimated = Math.max(8, elapsed * 2.5)
+        estimatedRemaining.value = Math.max(0, estimated - elapsed)
+        progress.value = Math.min(85, 30 + (elapsed / estimated) * 55)
+      }
+    }, 500)
 
     try {
       const resolvedModel = model.value === 'default' && activeProvider.defaultModel
@@ -78,6 +113,10 @@ export const useGeneratorStore = defineStore('generator', () => {
       generationTime.value = (Date.now() - startTime) / 1000
 
       if (result.success && result.data?.data?.[0]) {
+        clearInterval(estimateInterval)
+        stage.value = 'downloading'
+        progress.value = 90
+
         const imageData = result.data.data[0]
         lastImage.value = imageData.url ||
           (imageData.b64_json ? `data:image/png;base64,${imageData.b64_json}` : null)
@@ -101,26 +140,35 @@ export const useGeneratorStore = defineStore('generator', () => {
         progress.value = 100
         return true
       } else {
+        clearInterval(estimateInterval)
+        stageTimers.forEach(clearTimeout)
         error.value = result.error || '生成失败'
         status.value = 'error'
+        stage.value = null
         return false
       }
     } catch (e: any) {
+      clearInterval(estimateInterval)
+      stageTimers.forEach(clearTimeout)
       error.value = e.userMessage || e.message || '请求失败，请检查后端服务是否运行'
       status.value = 'error'
+      stage.value = null
       return false
     }
   }
 
   function reset(): void {
     status.value = 'idle'
+    stage.value = null
     progress.value = 0
     error.value = null
+    estimatedRemaining.value = null
   }
 
   return {
     prompt, negativePrompt, model, size, seed, steps, cfgScale, sampler,
-    status, progress, lastImage, error, generationTime,
+    status, stage, progress, lastImage, error, generationTime,
+    estimatedRemaining, stageLabel,
     validatePrompt, generate, reset,
   }
 })

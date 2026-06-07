@@ -105,7 +105,7 @@ class TestTemplates:
         templates_upsert(sample_template)
         items = templates_list_all()
         assert len(items) == 1
-        assert items[0]["title"] == "电商主图模板"
+        assert items[0]["name"] == "电商主图模板"
 
     def test_template_fields(self, sample_template):
         templates_upsert(sample_template)

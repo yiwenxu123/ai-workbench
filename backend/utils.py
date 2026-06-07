@@ -1,5 +1,9 @@
 """
 工具函数：payload 构建、端点检测、尺寸校验、结果提取
+
+重构说明：
+- 用策略函数替代 build_payload 中的 if-else 重复链
+- 统一端点类型解析逻辑（模型名 + URL 双重检测）
 """
 
 from typing import Optional
@@ -20,139 +24,145 @@ def normalize_size(size: str, endpoint_type: str) -> str:
     return size
 
 
+# ── 端点类型检测 ──────────────────────────────────────────────────
+
+# URL 关键字 → 端点类型的映射表（按优先级排列）
+_URL_TYPE_MAP: list[tuple[str, str]] = [
+    ("multimodal-generation", "qwen-v2"),
+    ("compatible-mode", "openai"),
+    ("volces.com", "doubao"),
+    ("bigmodel.cn", "zhipu"),
+    ("aliyuncs.com", "aliyun"),
+    ("openai.com", "openai"),
+]
+
+# 模型名前缀 → 端点类型的映射表
+_MODEL_TYPE_MAP: list[tuple[str, str]] = [
+    ("qwen-image-2.0", "qwen-v2"),
+    ("qwen-image-plus", "openai"),
+    ("qwen-image", "openai"),
+    ("wanx", "aliyun"),
+]
+
+
 def detect_endpoint_type(endpoint: str) -> str:
-    if "volces.com" in endpoint:
-        return "doubao"
-    elif "bigmodel.cn" in endpoint:
-        return "zhipu"
-    elif "aliyuncs.com" in endpoint:
-        if "multimodal-generation" in endpoint:
-            return "qwen-v2"  # 通义千问 2.0 multimodal-generation 格式
-        if "compatible-mode" in endpoint:
-            return "openai"  # 兼容模式 = OpenAI 兼容格式
-        return "aliyun"  # 标准 DashScope text2image 格式
-    elif "openai.com" in endpoint:
-        return "openai"
-    else:
-        return "generic"
+    """根据 URL 域名/路径检测端点类型"""
+    for keyword, etype in _URL_TYPE_MAP:
+        if keyword in endpoint:
+            return etype
+    return "generic"
 
 
 def _model_based_endpoint_type(model: str) -> Optional[str]:
+    """根据模型名推断端点类型"""
     if not model:
         return None
-    if model.startswith("qwen-image-2.0"):
-        return "qwen-v2"
-    if model in ("qwen-image-plus", "qwen-image"):
-        return "openai"
-    if model.startswith("wanx"):
-        return "aliyun"
+    for prefix, etype in _MODEL_TYPE_MAP:
+        if model.startswith(prefix):
+            return etype
     return None
 
-def build_payload(request: GenerateRequest, endpoint_type: str) -> dict:
-    # 模型名作为安全网：即使 endpoint_type 不匹配，模型名也能路由到正确格式
-    model_type = _model_based_endpoint_type(request.model or "")
-    effective_type = model_type or endpoint_type
 
-    base_payload = {
-        "prompt": request.prompt,
-        "model": request.model,
+def _resolve_endpoint_type(model: str, endpoint: str) -> str:
+    """统一解析端点类型：模型名优先，URL 兜底"""
+    return _model_based_endpoint_type(model) or detect_endpoint_type(endpoint)
+
+
+# ── 各供应商的 Payload 构建策略 ────────────────────────────────────
+
+def _build_doubao_payload(req: GenerateRequest) -> dict:
+    """豆包 / volces.com 格式"""
+    normalized = normalize_size(req.size, "doubao")
+    payload = {
+        "prompt": req.prompt,
+        "model": req.model,
+        "size": normalized,
+        "response_format": req.response_format,
+        "watermark": req.watermark,
+        "stream": req.stream,
+        "sequential_image_generation": "disabled",
+    }
+    if req.n > 1:
+        payload["n"] = req.n
+    return payload
+
+
+def _build_zhipu_payload(req: GenerateRequest) -> dict:
+    """智谱 / bigmodel.cn 格式"""
+    return {
+        "prompt": req.prompt,
+        "model": req.model,
+        "size": req.size,
     }
 
-    # endpoint_type 优先，仅 generic 时回退到域名匹配
-    if effective_type == "doubao":
-        normalized_size = normalize_size(request.size, "doubao")
-        base_payload.update({
-            "size": normalized_size,
-            "response_format": request.response_format,
-            "watermark": request.watermark,
-            "stream": request.stream,
-            "sequential_image_generation": "disabled",
-        })
-        if request.n > 1:
-            base_payload["n"] = request.n
-    elif effective_type == "zhipu":
-        base_payload.update({
-            "size": request.size,
-        })
-    elif effective_type == "aliyun":
-        base_payload.update({
-            "model": request.model or "wanx-v1",
-            "input": {
-                "prompt": request.prompt
-            },
-            "parameters": {
-                "size": request.size,
-                "n": request.n
-            }
-        })
-        del base_payload["prompt"]
-    elif effective_type == "openai":
-        base_payload.update({
-            "size": request.size,
-            "n": request.n,
-        })
-    elif effective_type == "qwen-v2":
-        # 通义千问 2.0 multimodal-generation messages 格式
-        size = request.size.replace("x", "*") if request.size else "1024*1024"
-        base_payload = {
-            "model": request.model or "qwen-image-2.0-pro",
-            "input": {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [{"text": request.prompt}]
-                    }
-                ]
-            },
-            "parameters": {
-                "size": size,
-                "n": request.n or 1,
-            }
-        }
-    else:
-        api_endpoint = request.api_endpoint or ""
-        if "volces.com" in api_endpoint:
-            normalized_size = normalize_size(request.size, "doubao")
-            base_payload.update({
-                "size": normalized_size,
-                "response_format": request.response_format,
-                "watermark": request.watermark,
-                "stream": request.stream,
-                "sequential_image_generation": "disabled",
-            })
-            if request.n > 1:
-                base_payload["n"] = request.n
-        elif "bigmodel.cn" in api_endpoint:
-            base_payload.update({
-                "size": request.size,
-            })
-        elif "aliyuncs.com" in api_endpoint and "compatible-mode" not in api_endpoint:
-            base_payload.update({
-                "model": request.model or "wanx-v1",
-                "input": {
-                    "prompt": request.prompt
-                },
-                "parameters": {
-                    "size": request.size,
-                    "n": request.n
-                }
-            })
-            del base_payload["prompt"]
-        else:
-            base_payload.update({
-                "size": request.size,
-                "n": request.n,
-            })
 
+def _build_aliyun_payload(req: GenerateRequest) -> dict:
+    """阿里云 DashScope text2image 格式"""
+    return {
+        "model": req.model or "wanx-v1",
+        "input": {"prompt": req.prompt},
+        "parameters": {"size": req.size, "n": req.n},
+    }
+
+
+def _build_openai_payload(req: GenerateRequest) -> dict:
+    """OpenAI / 兼容模式格式"""
+    return {
+        "prompt": req.prompt,
+        "model": req.model,
+        "size": req.size,
+        "n": req.n,
+    }
+
+
+def _build_qwen_v2_payload(req: GenerateRequest) -> dict:
+    """通义千问 2.0 multimodal-generation messages 格式"""
+    size = req.size.replace("x", "*") if req.size else "1024*1024"
+    return {
+        "model": req.model or "qwen-image-2.0-pro",
+        "input": {
+            "messages": [
+                {"role": "user", "content": [{"text": req.prompt}]}
+            ]
+        },
+        "parameters": {"size": size, "n": req.n or 1},
+    }
+
+
+# 端点类型 → 构建函数的映射
+_PAYLOAD_BUILDERS: dict[str, callable] = {
+    "doubao": _build_doubao_payload,
+    "zhipu": _build_zhipu_payload,
+    "aliyun": _build_aliyun_payload,
+    "openai": _build_openai_payload,
+    "qwen-v2": _build_qwen_v2_payload,
+}
+
+
+def build_payload(request: GenerateRequest, endpoint_type: str) -> dict:
+    """根据端点类型构建 API 请求 payload
+
+    优先使用传入的 endpoint_type，为 generic 时通过模型名+URL 重新解析。
+    """
+    effective_type = endpoint_type if endpoint_type != "generic" else _resolve_endpoint_type(
+        request.model or "", request.api_endpoint or ""
+    )
+
+    builder = _PAYLOAD_BUILDERS.get(effective_type, _build_openai_payload)
+    payload = builder(request)
+
+    # 合并 extra_params（安全过滤）
     if request.extra_params:
         safe_params = {
             k: v for k, v in request.extra_params.items()
             if isinstance(k, str) and not k.startswith('_')
         }
-        base_payload.update(safe_params)
+        payload.update(safe_params)
 
-    return base_payload
+    return payload
 
+
+# ── 尺寸校验 ──────────────────────────────────────────────────────
 
 def validate_size_for_model(model: str, size: str) -> tuple[bool, Optional[str]]:
     config = MODEL_SIZE_CONFIG.get(model)
@@ -174,6 +184,8 @@ def validate_size_for_model(model: str, size: str) -> tuple[bool, Optional[str]]
     except ValueError:
         return False, "尺寸格式无效"
 
+
+# ── 结果提取 ──────────────────────────────────────────────────────
 
 def extract_result_url(data: dict) -> Optional[str]:
     if not isinstance(data, dict):
@@ -208,42 +220,50 @@ def extract_result_url(data: dict) -> Optional[str]:
     return None
 
 
+# ── 模型信息推断 ──────────────────────────────────────────────────
+
+_PROVIDER_MAP: list[tuple[str, str]] = [
+    ("doubao", "doubao"),
+    ("wanx", "aliyun"),
+    ("qwen", "aliyun"),
+    ("cogview", "zhipu"),
+    ("dall-e", "openai"),
+]
+
+_SCENARIO_MAP: dict[str, list[str]] = {
+    "doubao": ["电商主图", "社媒海报", "PPT配图"],
+    "wanx": ["国风插画", "商业海报", "图片编辑"],
+    "qwen": ["电商主图", "产品设计", "写实照片"],
+    "cogview": ["低成本试用", "知识学习", "草图验证"],
+    "dall-e": ["英文提示词", "概念图", "创意探索"],
+}
+
+
 def infer_model_provider(model_id: str) -> str:
-    if model_id.startswith("doubao"):
-        return "doubao"
-    if model_id.startswith("wanx") or model_id.startswith("qwen"):
-        return "aliyun"
-    if model_id.startswith("cogview"):
-        return "zhipu"
-    if model_id.startswith("dall-e"):
-        return "openai"
+    for prefix, provider in _PROVIDER_MAP:
+        if model_id.startswith(prefix):
+            return provider
     return "custom"
 
 
 def infer_model_scenarios(model_id: str) -> list[str]:
-    if model_id.startswith("doubao"):
-        return ["电商主图", "社媒海报", "PPT配图"]
-    if model_id.startswith("wanx"):
-        return ["国风插画", "商业海报", "图片编辑"]
-    if model_id.startswith("qwen"):
-        return ["电商主图", "产品设计", "写实照片"]
-    if model_id.startswith("cogview"):
-        return ["低成本试用", "知识学习", "草图验证"]
-    if model_id.startswith("dall-e"):
-        return ["英文提示词", "概念图", "创意探索"]
+    for prefix, scenarios in _SCENARIO_MAP.items():
+        if model_id.startswith(prefix):
+            return scenarios
     return ["通用创作"]
 
 
 def humanize_api_error(status_code: int, provider: str = "") -> str:
     """将 HTTP 错误码转为用户友好的错误提示"""
+    suffix = f"（{provider}）" if provider else ""
     friendly = {
-        400: f"请求参数有误，请检查提示词或尺寸设置",
-        401: f"API 密钥无效或已过期，请检查密钥是否正确{f'（{provider}）' if provider else ''}",
-        402: f"账户余额不足，请充值后再试",
-        403: f"无权限访问，请检查 API 密钥权限{f'（{provider}）' if provider else ''}",
-        404: f"API 端点地址错误，请检查配置{f'（{provider}）' if provider else ''}",
+        400: "请求参数有误，请检查提示词或尺寸设置",
+        401: f"API 密钥无效或已过期，请检查密钥是否正确{suffix}",
+        402: "账户余额不足，请充值后再试",
+        403: f"无权限访问，请检查 API 密钥权限{suffix}",
+        404: f"API 端点地址错误，请检查配置{suffix}",
         429: "请求过于频繁，请稍后再试",
-        500: f"API 服务暂时异常{f'（{provider}）' if provider else ''}，请稍后重试",
+        500: f"API 服务暂时异常{suffix}，请稍后重试",
         502: "API 网关超时，请稍后重试",
         503: "API 服务维护中，请稍后重试",
     }
@@ -252,14 +272,13 @@ def humanize_api_error(status_code: int, provider: str = "") -> str:
 
 def detect_default_model(endpoint: str) -> str:
     """为 'default' 模型名称返回供应商的默认模型"""
-    if "volces.com" in endpoint:
-        return "doubao-seedream-4-5-251128"
-    if "bigmodel.cn" in endpoint:
-        return "cogview-3-flash"
+    for keyword, model in [
+        ("volces.com", "doubao-seedream-4-5-251128"),
+        ("bigmodel.cn", "cogview-3-flash"),
+        ("openai.com", "dall-e-3"),
+    ]:
+        if keyword in endpoint:
+            return model
     if "aliyuncs.com" in endpoint:
-        if "compatible-mode" in endpoint:
-            return "qwen-image-plus"
-        return "wanx-v1"
-    if "openai.com" in endpoint:
-        return "dall-e-3"
+        return "qwen-image-plus" if "compatible-mode" in endpoint else "wanx-v1"
     return ""

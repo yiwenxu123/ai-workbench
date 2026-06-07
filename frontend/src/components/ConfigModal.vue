@@ -230,6 +230,10 @@
           />
         </n-form-item>
       </n-form>
+
+      <div v-if="testTarget === 'vision' && testResult" class="test-result" :class="{ success: testResult.success }">
+        {{ testResult.message }}
+      </div>
       
       <template v-if="currentPreset?.helpUrl">
         <n-divider />
@@ -292,7 +296,11 @@
           />
         </n-form-item>
       </n-form>
-      
+
+      <div v-if="testTarget === 'video' && testResult" class="test-result" :class="{ success: testResult.success }">
+        {{ testResult.message }}
+      </div>
+
       <template v-if="currentVideoPreset?.helpUrl">
         <n-divider />
         <n-space vertical>
@@ -353,7 +361,11 @@
           />
         </n-form-item>
       </n-form>
-      
+
+      <div v-if="testTarget === 'edit' && testResult" class="test-result" :class="{ success: testResult.success }">
+        {{ testResult.message }}
+      </div>
+
       <template v-if="currentEditPreset?.helpUrl">
         <n-divider />
         <n-space vertical>
@@ -420,7 +432,11 @@
           </template>
         </n-form-item>
       </n-form>
-      
+
+      <div v-if="testTarget === 'llm' && testResult" class="test-result" :class="{ success: testResult.success }">
+        {{ testResult.message }}
+      </div>
+
       <template v-if="currentLLMPreset?.helpUrl">
         <n-divider />
         <n-space vertical>
@@ -1209,5 +1225,21 @@ function removeLLMConfig(name: string): void {
 
 :deep(.n-list-item:hover) {
   background: var(--bg-subtle);
+}
+
+.test-result {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 13px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+}
+
+.test-result.success {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #16a34a;
 }
 </style>

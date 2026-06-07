@@ -1,7 +1,7 @@
 <template>
   <div class="favorite-gallery">
     <n-scrollbar style="max-height: 350px">
-      <n-empty v-if="favorites.length === 0" description="暂无收藏" />
+      <EmptyState v-if="favorites.length === 0" title="暂无收藏" hint="在作品中点击收藏按钮添加" />
       <n-grid :cols="2" :x-gap="8" :y-gap="8" v-else>
         <n-gi v-for="item in favorites" :key="item.id">
           <n-card size="small" hoverable class="favorite-card">
@@ -52,6 +52,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useHistoryStore } from '../../stores'
+import EmptyState from '../common/EmptyState.vue'
 import type { History } from '../../types'
 
 const emit = defineEmits<{

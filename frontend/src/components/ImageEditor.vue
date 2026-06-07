@@ -125,10 +125,7 @@
 
     <!-- 右侧画布区 -->
     <div class="panel-content">
-      <div v-if="!sourceImage" class="empty-state">
-        <div class="empty-icon"><n-icon :component="Image" /></div>
-        <div class="empty-text">请在左侧上传图片开始编辑</div>
-      </div>
+      <EmptyState v-if="!sourceImage" title="请在左侧上传图片开始编辑" />
 
       <div v-else class="editor-workspace">
         <div class="workspace-section">
@@ -194,10 +191,10 @@ import {
   NModal, NScrollbar, NGrid, NGi, useMessage
 } from 'naive-ui'
 import { CloseOutline } from '@vicons/ionicons5'
-import { Image } from 'lucide-vue-next'
 import { useConfigStore, useHistoryStore, useEditorStore, useProviderStore } from '../stores'
 import { apiService } from '../api'
 import MaskCanvas from './MaskCanvas.vue'
+import EmptyState from './common/EmptyState.vue'
 import type { History } from '../types'
 import type { UploadCustomRequestOptions } from 'naive-ui'
 
@@ -402,64 +399,6 @@ async function saveToHistory() {
 </script>
 
 <style scoped>
-.panel-layout {
-  display: flex;
-  gap: var(--panel-gap, 20px);
-  height: 100%;
-  transition: gap var(--duration-base) var(--ease-out);
-}
-
-.panel-sider {
-  flex: 0 0 380px;
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  box-shadow: var(--shadow-sm);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  transition: box-shadow var(--duration-base) var(--ease-out), background var(--duration-base) var(--ease-out);
-}
-
-.panel-content {
-  flex: 1;
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  box-shadow: var(--shadow-sm);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  position: relative;
-  transition: box-shadow var(--duration-base) var(--ease-out), background var(--duration-base) var(--ease-out);
-}
-
-@media (max-width: 1024px) {
-  .panel-layout {
-    flex-direction: column;
-    gap: 16px;
-    overflow-y: auto;
-  }
-  .panel-sider {
-    flex: none;
-    max-height: 55vh;
-  }
-  .panel-content {
-    flex: 1;
-    min-height: 300px;
-  }
-}
-
-.sider-header h3 {
-  margin: 0 0 20px 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  opacity: 0.7;
-}
-
 /* ── 统一上传区（固定在 Tab 上方）── */
 .upload-section {
   flex-shrink: 0;
@@ -598,18 +537,6 @@ async function saveToHistory() {
   box-shadow: var(--shadow-sm);
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 320px;
-  color: var(--text-secondary);
-  gap: 14px;
-}
-.empty-icon { font-size: 48px; margin-bottom: 4px; opacity: 0.35; color: var(--brand-400); }
-.empty-text { font-size: 14px; color: var(--gray-400); }
 
 .generating-state {
   display: flex;

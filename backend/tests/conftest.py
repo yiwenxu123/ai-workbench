@@ -72,7 +72,7 @@ def sample_knowledge():
 def sample_template():
     return {
         "id": "tpl-ecommerce-main",
-        "title": "电商主图模板",
+        "name": "电商主图模板",
         "category": "电商",
         "description": "适合电商产品主图",
         "prompt": "{产品名称}，白底，产品摄影，专业打光",

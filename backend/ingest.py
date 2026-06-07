@@ -9,6 +9,7 @@ import re
 import httpx
 import ipaddress
 import socket
+from difflib import SequenceMatcher
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -185,35 +186,47 @@ def _load_existing(target_type: str) -> list[dict]:
 
 
 def _text_similarity(a: str, b: str) -> float:
-    """简易 Jaccard 相似度（基于字符 bigram）。"""
+    """文本相似度：SequenceMatcher + 子串包含 + 字符重叠率 综合评分。"""
     if not a or not b:
         return 0.0
     a_lower, b_lower = a.lower(), b.lower()
     if a_lower == b_lower:
         return 1.0
-    # 子串包含
+    # 子串包含（短串是长串的子串）
     if a_lower in b_lower or b_lower in a_lower:
-        return 0.8
-    # bigram Jaccard
-    def bigrams(s):
-        return set(s[i:i+2] for i in range(len(s) - 1))
-    a_bg, b_bg = bigrams(a_lower), bigrams(b_lower)
-    if not a_bg or not b_bg:
-        return 0.0
-    inter = len(a_bg & b_bg)
-    union = len(a_bg | b_bg)
-    return inter / union if union else 0.0
+        shorter, longer = min(len(a_lower), len(b_lower)), max(len(a_lower), len(b_lower))
+        return 0.7 + 0.1 * (shorter / longer)
+    # SequenceMatcher：字符级最长公共子序列比率
+    seq_ratio = SequenceMatcher(None, a_lower, b_lower).ratio()
+    # 字符集合重叠率（对中文短句有效）
+    set_a, set_b = set(a_lower), set(b_lower)
+    char_overlap = len(set_a & set_b) / max(len(set_a | set_b), 1)
+    # 综合：SequenceMatcher 权重 0.7，字符重叠权重 0.3
+    return seq_ratio * 0.7 + char_overlap * 0.3
 
 
 def _tags_overlap(tags_a: list, tags_b: list) -> float:
-    """标签重叠率。"""
+    """标签重叠率：精确匹配 + 子串包含匹配。"""
     if not tags_a or not tags_b:
         return 0.0
-    set_a = set(str(t).lower() for t in tags_a)
-    set_b = set(str(t).lower() for t in tags_b)
-    inter = len(set_a & set_b)
-    union = len(set_a | set_b)
-    return inter / union if union else 0.0
+    set_a = [str(t).lower() for t in tags_a]
+    set_b = [str(t).lower() for t in tags_b]
+    # 精确匹配
+    exact = len(set(set_a) & set(set_b))
+    # 子串包含匹配（A 的标签是 B 的子串，或反之）
+    substring_matches = 0
+    used_b = set()
+    for ta in set_a:
+        for j, tb in enumerate(set_b):
+            if j in used_b:
+                continue
+            if ta in tb or tb in ta:
+                substring_matches += 1
+                used_b.add(j)
+                break
+    total_matches = max(exact, substring_matches)
+    union = len(set(set_a) | set(set_b))
+    return total_matches / union if union else 0.0
 
 
 def find_candidates(new_item: dict, existing: list[dict], threshold: float = 0.35) -> list[dict]:
