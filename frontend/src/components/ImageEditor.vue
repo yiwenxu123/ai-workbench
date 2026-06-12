@@ -6,7 +6,7 @@
         <h3>图片编辑</h3>
       </div>
       
-      <n-alert v-if="!providerStore.hasConfiguredEditProvider" type="warning" class="mb-3" :show-icon="false">
+      <n-alert v-if="!canUseEdit" type="warning" class="mb-3" :show-icon="false">
         <span>请先配置图片编辑能力</span>
         <n-button text type="primary" @click="configStore.showConfigModal = true">
           立即配置
@@ -193,6 +193,7 @@ import {
 import { CloseOutline } from '@vicons/ionicons5'
 import { useConfigStore, useHistoryStore, useEditorStore, useProviderStore } from '../stores'
 import { apiService } from '../api'
+import { useCapabilityReady } from '../composables/useCapabilityReady'
 import MaskCanvas from './MaskCanvas.vue'
 import EmptyState from './common/EmptyState.vue'
 import type { History } from '../types'
@@ -203,6 +204,7 @@ const configStore = useConfigStore()
 const historyStore = useHistoryStore()
 const editorStore = useEditorStore()
 const providerStore = useProviderStore()
+const { canUseEdit, getProviderCredentials } = useCapabilityReady()
 
 const activeTab = ref('instruction')
 const sourceImage = ref<string | null>(null)
@@ -269,11 +271,7 @@ function clearMask() {
 }
 
 function getEditProviderParams() {
-  const provider = providerStore.getDefaultProviderByCapability('edit')
-  return {
-    api_key: provider?.apiKey || undefined,
-    api_endpoint: provider?.endpoint || undefined
-  }
+  return getProviderCredentials('edit') ?? {}
 }
 
 async function handleInstructionEdit() {

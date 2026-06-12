@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { apiService } from '../api'
 import { useProviderStore } from './provider'
 import { config } from '../config'
+import { useCapabilityReady } from '../composables/useCapabilityReady'
 import type { ShotType, CameraMovement, CameraAngle } from '../data/shotLanguage'
 
 export type VideoGenerateStatus = 'idle' | 'generating' | 'success' | 'error'
@@ -52,22 +53,26 @@ export const useVideoStore = defineStore('video', () => {
     taskStatus.value = null
 
     try {
-      const activeProvider = providerStore.getDefaultProviderByCapability('video')
-      if (!activeProvider || !activeProvider.apiKey || !activeProvider.endpoint) {
+      const { getProviderCredentials } = useCapabilityReady()
+      const credentials = getProviderCredentials('video')
+      if (!credentials) {
         error.value = '请先配置视频生成API密钥'
         status.value = 'error'
         return false
       }
 
+      const activeProvider = providerStore.getDefaultProviderByCapability('video')
+
       const params = {
         prompt: prompt.value.trim(),
-        model: activeProvider.defaultModel || model.value,
+        model: activeProvider?.defaultModel || model.value,
         duration: duration.value,
         resolution: resolution.value,
         source_image: sourceImage.value || undefined,
         negative_prompt: negativePrompt.value || undefined,
-        api_key: activeProvider.apiKey,
-        api_endpoint: activeProvider.endpoint,
+        ...(credentials.api_key && credentials.api_endpoint
+          ? { api_key: credentials.api_key, api_endpoint: credentials.api_endpoint }
+          : {}),
       }
 
       const result = await apiService.generateVideo(params)
@@ -87,8 +92,7 @@ export const useVideoStore = defineStore('video', () => {
         taskId.value = currentTaskId
 
         const polledUrl = await pollTaskResult(currentTaskId, {
-          api_key: activeProvider.apiKey,
-          api_endpoint: activeProvider.endpoint,
+          ...credentials,
         })
 
         if (polledUrl) {
@@ -129,7 +133,7 @@ export const useVideoStore = defineStore('video', () => {
 
   async function pollTaskResult(
     tid: string,
-    params: { api_key?: string; api_endpoint?: string }
+    params: { api_key?: string; api_endpoint?: string; provider?: string }
   ): Promise<string | null> {
     for (let attempt = 0; attempt < 36; attempt++) {
       const delay = attempt < 6 ? 5000 : 10000

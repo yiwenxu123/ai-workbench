@@ -22,53 +22,33 @@
               size="small"
               hoverable
               :class="{ 'template-selected': selectedTemplate?.id === template.id }"
-              @click="selectedTemplate = template"
+              @click="selectTemplate(template)"
             >
               <template #header>
                 <n-space align="center">
-                  <span>{{ template.icon }}</span>
-                  <span>{{ template.name }}</span>
+                  <span>{{ categoryIcon(template.taskType) }}</span>
+                  <span>{{ template.title }}</span>
                 </n-space>
               </template>
               <n-text depth="3">{{ template.description }}</n-text>
             </n-card>
           </n-gi>
         </n-grid>
+        <n-empty v-if="filteredTemplates.length === 0" description="暂无视频模板" size="small" class="mt-2" />
       </n-form-item>
 
-      <n-collapse v-if="selectedTemplate">
+      <n-collapse v-if="selectedTemplate && templateFields.length > 0">
         <n-collapse-item title="填写模板参数" name="fields">
           <n-form label-placement="left" label-width="80">
             <n-form-item
-              v-for="field in selectedTemplate.fields"
-              :key="field.key"
-              :label="field.label"
-              :required="field.required"
+              v-for="field in templateFields"
+              :key="field"
+              :label="field"
+              required
             >
               <n-input
-                v-if="field.type === 'text'"
-                v-model:value="fieldValues[field.key]"
-                :placeholder="field.placeholder"
-              />
-              <n-input
-                v-else-if="field.type === 'textarea'"
-                v-model:value="fieldValues[field.key]"
-                type="textarea"
-                :placeholder="field.placeholder"
-                :rows="2"
-              />
-              <n-select
-                v-else-if="field.type === 'select'"
-                v-model:value="fieldValues[field.key]"
-                :options="field.options"
-                :placeholder="field.placeholder"
-              />
-              <n-select
-                v-else-if="field.type === 'multiselect'"
-                v-model:value="fieldValues[field.key]"
-                :options="field.options"
-                :placeholder="field.placeholder"
-                multiple
+                v-model:value="fieldValues[field]"
+                :placeholder="`填写${field}`"
               />
             </n-form-item>
           </n-form>
@@ -89,79 +69,88 @@
         </template>
       </n-card>
 
-      <n-card v-if="selectedTemplate" size="small" title="推荐镜头组合">
-        <n-steps vertical :current="-1">
-          <n-step
-            v-for="(shot, index) in selectedTemplate.recommendedShots"
-            :key="index"
-            :title="getShotDescription(shot)"
-            :description="`${shot.duration}秒`"
-          />
-        </n-steps>
-      </n-card>
-
-      <n-alert v-if="selectedTemplate" type="info" :show-icon="false">
-        <template #header>小贴士</template>
-        <ul class="tips-list">
-          <li v-for="(tip, index) in selectedTemplate.tips" :key="index">{{ tip }}</li>
-        </ul>
+      <n-alert v-if="selectedTemplate?.negativePrompt" type="info" :show-icon="false">
+        <template #header>推荐负面词</template>
+        {{ selectedTemplate.negativePrompt }}
       </n-alert>
     </n-space>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useMessage } from 'naive-ui'
-import {
-  videoTemplateCategories,
-  getVideoTemplatesByCategory,
-  generatePromptFromTemplate
-} from '../data/videoTemplates'
-import { getShotTypeById, getCameraMovementById } from '../data/shotLanguage'
-import type { VideoTemplate } from '../data/videoTemplates'
+import { useDataStore } from '../stores'
+import type { UnifiedTemplate } from '../types/api'
+import { extractPlaceholders, fillPromptTemplate } from '../utils/templatePrompt'
 
 const emit = defineEmits<{
   apply: [prompt: string]
 }>()
 
 const message = useMessage()
+const dataStore = useDataStore()
+
+const CATEGORY_META: Record<string, { name: string; icon: string }> = {
+  product: { name: '电商产品', icon: '📦' },
+  brand: { name: '企业品牌', icon: '🏢' },
+  education: { name: '科普教育', icon: '📚' },
+  culture: { name: '文化内容', icon: '🎨' },
+  social: { name: '社媒内容', icon: '📱' },
+  festival: { name: '节庆营销', icon: '🎉' },
+}
 
 const selectedCategory = ref<string>('product')
-const selectedTemplate = ref<VideoTemplate | null>(null)
-const fieldValues = ref<Record<string, string | string[]>>({})
+const selectedTemplate = ref<UnifiedTemplate | null>(null)
+const fieldValues = ref<Record<string, string>>({})
 
-const categories = computed(() => videoTemplateCategories)
+onMounted(() => {
+  dataStore.loadAll()
+})
+
+const categories = computed(() => {
+  const seen = new Map<string, { id: string; name: string; icon: string }>()
+  for (const template of dataStore.videoTemplates) {
+    const id = template.taskType || 'general'
+    if (!seen.has(id)) {
+      const meta = CATEGORY_META[id] || { name: id, icon: '🎬' }
+      seen.set(id, { id, ...meta })
+    }
+  }
+  return [...seen.values()]
+})
+
+watch(categories, (cats) => {
+  if (cats.length > 0 && !cats.some(c => c.id === selectedCategory.value)) {
+    selectedCategory.value = cats[0].id
+  }
+}, { immediate: true })
 
 const filteredTemplates = computed(() =>
-  getVideoTemplatesByCategory(selectedCategory.value as any)
+  dataStore.videoTemplates.filter(t => (t.taskType || 'general') === selectedCategory.value)
 )
+
+const templateFields = computed(() => {
+  if (!selectedTemplate.value) return []
+  return extractPlaceholders(selectedTemplate.value.promptTemplate)
+})
 
 const generatedPrompt = computed(() => {
   if (!selectedTemplate.value) return ''
-  return generatePromptFromTemplate(selectedTemplate.value, fieldValues.value)
+  return fillPromptTemplate(selectedTemplate.value.promptTemplate, fieldValues.value)
 })
 
-watch(selectedTemplate, (template) => {
-  if (template) {
-    const values: Record<string, string | string[]> = {}
-    for (const field of template.fields) {
-      if (field.defaultValue) {
-        values[field.key] = field.defaultValue
-      } else if (field.type === 'multiselect') {
-        values[field.key] = []
-      } else {
-        values[field.key] = ''
-      }
-    }
-    fieldValues.value = values
+function categoryIcon(taskType: string): string {
+  return CATEGORY_META[taskType]?.icon || '🎬'
+}
+
+function selectTemplate(template: UnifiedTemplate) {
+  selectedTemplate.value = template
+  const values: Record<string, string> = {}
+  for (const field of extractPlaceholders(template.promptTemplate)) {
+    values[field] = ''
   }
-})
-
-function getShotDescription(shot: any): string {
-  const shotType = getShotTypeById(shot.type)
-  const movement = getCameraMovementById(shot.movement)
-  return `${shotType?.name || ''} ${movement?.name || ''} - ${shot.description}`
+  fieldValues.value = values
 }
 
 function handleApply() {
@@ -188,14 +177,5 @@ async function handleCopy() {
 
 .template-selected {
   border: 2px solid #18a058;
-}
-
-.tips-list {
-  margin: 0;
-  padding-left: 16px;
-}
-
-.tips-list li {
-  margin: 4px 0;
 }
 </style>

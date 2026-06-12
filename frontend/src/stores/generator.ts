@@ -4,6 +4,7 @@ import { apiService } from '../api'
 import { useProviderStore } from './provider'
 import { useHistoryStore } from './history'
 import { config } from '../config'
+import { useCapabilityReady } from '../composables/useCapabilityReady'
 import type { GenerateParams } from '../types'
 
 export type GenerateStatus = 'idle' | 'generating' | 'success' | 'error'
@@ -55,11 +56,14 @@ export const useGeneratorStore = defineStore('generator', () => {
 
     error.value = null
 
-    const activeProvider = providerStore.getDefaultProviderByCapability('image')
-    if (!activeProvider || !activeProvider.apiKey || !activeProvider.endpoint) {
+    const { getProviderCredentials } = useCapabilityReady()
+    const credentials = getProviderCredentials('image')
+    if (!credentials) {
       error.value = '请先配置图像生成API密钥'
       return false
     }
+
+    const activeProvider = providerStore.getDefaultProviderByCapability('image')
 
     status.value = 'generating'
     stage.value = 'preparing'
@@ -92,7 +96,7 @@ export const useGeneratorStore = defineStore('generator', () => {
     }, 500)
 
     try {
-      const resolvedModel = model.value === 'default' && activeProvider.defaultModel
+      const resolvedModel = model.value === 'default' && activeProvider?.defaultModel
         ? activeProvider.defaultModel
         : model.value
 
@@ -105,8 +109,9 @@ export const useGeneratorStore = defineStore('generator', () => {
         steps: steps.value,
         cfg_scale: cfgScale.value,
         sampler: sampler.value,
-        api_key: activeProvider.apiKey,
-        api_endpoint: activeProvider.endpoint,
+        ...(credentials.api_key && credentials.api_endpoint
+          ? { api_key: credentials.api_key, api_endpoint: credentials.api_endpoint }
+          : {}),
       }
 
       const result = await apiService.generateImage(params)

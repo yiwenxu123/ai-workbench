@@ -7,8 +7,9 @@
           <h3>视频生成</h3>
         </div>
 
+        <div class="panel-sider-scroll">
         <n-alert
-          v-if="!providerStore.hasConfiguredVideoProvider"
+          v-if="!canUseVideo"
           type="warning"
           class="mb-3"
           :show-icon="false"
@@ -160,20 +161,22 @@
         </n-gi>
       </n-grid>
 
-        <n-form-item class="mt-3">
-          <n-space vertical style="width: 100%">
-            <n-button
-              type="primary"
-              block
-              size="large"
-              :loading="videoStore.status === 'generating'"
-              :disabled="!canGenerate"
-              @click="handleGenerate"
-            >
-              {{ videoStore.status === 'generating' ? `生成中 ${Math.round(videoStore.progress)}%` : '生成视频' }}
-            </n-button>
-          </n-space>
-        </n-form-item>
+        </div> <!-- /panel-sider-scroll -->
+
+        <!-- 生成按钮：固定在面板底部 -->
+        <div class="panel-sider-footer">
+          <n-button
+            type="primary"
+            block
+            size="large"
+            class="generate-btn"
+            :loading="videoStore.status === 'generating'"
+            :disabled="!canGenerate"
+            @click="handleGenerate"
+          >
+            {{ videoStore.status === 'generating' ? `生成中 ${Math.round(videoStore.progress)}%` : '生成视频' }}
+          </n-button>
+        </div>
       </div> <!-- /panel-sider -->
 
       <!-- 右侧：生成结果区 -->
@@ -251,7 +254,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { CloseOutline } from '@vicons/ionicons5'
 import { Film } from 'lucide-vue-next'
@@ -259,7 +262,8 @@ import { useVideoStore } from '../stores/video'
 import { useConfigStore } from '../stores/config'
 import { useProviderStore } from '../stores/provider'
 import { shotTypes, cameraMovements, cameraAngles, videoDurations, videoResolutions } from '../data/shotLanguage'
-import { videoModels } from '../data/videoTemplates'
+import { useModelManifest } from '../composables/useModelManifest'
+import { useCapabilityReady } from '../composables/useCapabilityReady'
 import { getErrorInfo } from '../utils/errorMessages'
 import VideoTemplateWizard from './VideoTemplateWizard.vue'
 import type { UploadCustomRequestOptions } from 'naive-ui'
@@ -268,6 +272,8 @@ const message = useMessage()
 const videoStore = useVideoStore()
 const configStore = useConfigStore()
 const providerStore = useProviderStore()
+const { canUseVideo } = useCapabilityReady()
+const { getVideoModels, getModel } = useModelManifest()
 
 const activeTab = ref('text2video')
 
@@ -283,21 +289,57 @@ const angleOptions = computed(() =>
   cameraAngles.map(a => ({ label: a.name, value: a.id }))
 )
 
-const modelOptions = computed(() =>
-  videoModels.map(m => ({ label: m.label, value: m.value }))
+const modelOptions = computed(() => {
+  const fromManifest = getVideoModels()
+  if (fromManifest.length > 0) {
+    return fromManifest.map((m) => ({ label: m.label, value: m.value }))
+  }
+  return [
+    { label: '可灵 V1', value: 'kling-v1' },
+    { label: '可灵 V1.5', value: 'kling-v1-5' },
+    { label: '即梦 V1', value: 'jimeng-v1' },
+    { label: 'Runway Gen-3', value: 'runway-gen3' },
+  ]
+})
+
+const selectedModelManifest = computed(() =>
+  videoStore.model ? getModel(videoStore.model) : undefined
 )
 
-const durationOptions = computed(() =>
-  videoDurations.map(d => ({ label: d.label, value: d.value }))
-)
+const durationOptions = computed(() => {
+  const durations = selectedModelManifest.value?.durations
+  if (durations && durations.length > 0) {
+    const labels: Record<number, string> = { 3: '3秒', 5: '5秒', 10: '10秒', 15: '15秒', 30: '30秒', 60: '60秒' }
+    return durations.map(d => ({ label: labels[d] ?? `${d}秒`, value: d }))
+  }
+  return videoDurations.map(d => ({ label: d.label, value: d.value }))
+})
 
-const resolutionOptions = computed(() =>
-  videoResolutions.map(r => ({ label: r.label, value: r.value }))
-)
+const resolutionOptions = computed(() => {
+  const resolutions = selectedModelManifest.value?.resolutions
+  if (resolutions && resolutions.length > 0) {
+    const labels: Record<string, string> = { '720p': '720P', '1080p': '1080P', '4k': '4K' }
+    return resolutions.map(r => ({ label: labels[r] ?? r, value: r }))
+  }
+  return videoResolutions.map(r => ({ label: r.label, value: r.value }))
+})
+
+watch(() => videoStore.model, (newModel) => {
+  const manifest = newModel ? getModel(newModel) : undefined
+  const durations = manifest?.durations
+  const resolutions = manifest?.resolutions
+
+  if (durations?.length && !durations.includes(videoStore.duration)) {
+    videoStore.duration = durations[0]
+  }
+  if (resolutions?.length && !resolutions.includes(videoStore.resolution)) {
+    videoStore.resolution = resolutions[0]
+  }
+})
 
 const canGenerate = computed(() => {
   if (!videoStore.prompt.trim()) return false
-  if (!providerStore.hasConfiguredVideoProvider) return false
+  if (!canUseVideo.value) return false
   if (videoStore.status === 'generating') return false
   return true
 })
@@ -402,10 +444,19 @@ function handleVideoError() {
   box-shadow: var(--shadow-lg);
 }
 
-/* 面板内生成按钮推到最底部 */
-.panel-sider > :deep(.n-form-item:last-child) {
-  margin-top: auto !important;
-  margin-bottom: 0;
+/* ── Panel Sider Footer (Sticky) ── */
+.panel-sider-footer {
+  flex-shrink: 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-card);
+}
+
+.generate-btn {
+  height: 44px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  border-radius: var(--radius-md) !important;
 }
 
 .mt-2 { margin-top: 8px; }
