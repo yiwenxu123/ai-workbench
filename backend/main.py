@@ -9,7 +9,6 @@ import os
 import time
 from collections import defaultdict
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -18,8 +17,6 @@ from config import RATE_LIMITED_PATHS, RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW
 from models import FetchUrlRequest, IngestExtractRequest, IngestSaveRequest
 from routers.generation import router as generation_router
 from routers.content import router as content_router
-
-load_dotenv()
 
 from knowledge_db import init_db as init_knowledge_db
 
@@ -103,6 +100,8 @@ async def root():
 @app.on_event("startup")
 async def startup():
     init_knowledge_db()
+    from seed_data import seed_from_json_if_empty
+    seed_from_json_if_empty()
     # 启动 embedding 后台 worker
     import asyncio
     from embedding_worker import run_worker

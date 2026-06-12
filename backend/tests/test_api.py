@@ -122,3 +122,43 @@ class TestConfigAPI:
         assert resp.status_code == 200
         data = resp.json()
         assert "models" in data
+        assert any(m["id"] == "default" for m in data["models"])
+        assert any(m["id"] == "doubao-seedream-4-5-251128" for m in data["models"])
+
+    def test_backend_configured_capabilities(self, client):
+        resp = client.get("/config")
+        caps = resp.json().get("backend_configured_capabilities", {})
+        assert isinstance(caps, dict)
+        for key in ("image", "video", "edit"):
+            assert key in caps
+            assert isinstance(caps[key], bool)
+
+
+class TestModelManifestAPI:
+    def test_model_manifest_schema(self, client):
+        resp = client.get("/api/model-manifest")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "models" in data
+        assert len(data["models"]) > 0
+        for model in data["models"]:
+            assert "id" in model
+            assert "name" in model
+            assert "capabilities" in model
+            assert "provider" in model
+
+    def test_config_models_subset_of_manifest(self, client):
+        config_resp = client.get("/config")
+        manifest_resp = client.get("/api/model-manifest")
+        config_ids = {m["id"] for m in config_resp.json()["models"]}
+        manifest_ids = {m["id"] for m in manifest_resp.json()["models"]}
+        assert config_ids.issubset(manifest_ids | {"default"})
+
+    def test_video_models_in_manifest(self, client):
+        resp = client.get("/api/model-manifest")
+        video_ids = {
+            m["id"] for m in resp.json()["models"]
+            if "video" in m.get("capabilities", [])
+        }
+        assert "kling-v1" in video_ids
+        assert "jimeng-v1" in video_ids

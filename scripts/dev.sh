@@ -9,6 +9,7 @@ command -v python3 >/dev/null 2>&1 || { echo "缺少 python3，请先安装 Pyth
 
 echo "[2/3] 启动后端（FastAPI）..."
 echo "提示：首次启动请先在 backend/ 配置 .env，并安装依赖：pip install -r requirements.txt"
+echo "提示：知识库会在后端首次启动时从 backend/data/*.json 自动灌入（无需手动 migrate）"
 (cd "${ROOT_DIR}/backend" && python3 "main.py") &
 BACKEND_PID=$!
 

@@ -9,9 +9,14 @@ from fastapi.responses import JSONResponse
 
 from config import (
     ALIYUN_EDIT_API_ENDPOINT, ALIYUN_EDIT_API_KEY,
+    BACKEND_CONFIGURED_CAPABILITIES,
     DEFAULT_API_ENDPOINT, DEFAULT_API_KEY,
+    DEFAULT_IMAGE_SIZES,
+    EDIT_MODEL_MANIFEST,
     KLING_API_ENDPOINT, KLING_API_KEY,
+    MODEL_DISPLAY_NAMES,
     MODEL_SIZE_CONFIG,
+    VIDEO_MODEL_MANIFEST,
 )
 from models import (
     ConfigResponse, GenerateRequest, GenerateResponse,
@@ -19,6 +24,7 @@ from models import (
     TaskStatusResponse, ValidateRequest, ValidateResponse,
     VideoGenerateRequest, VideoGenerateResponse,
 )
+from providers import get_adapter
 from utils import (
     build_payload, detect_default_model, detect_endpoint_type,
     extract_result_url, humanize_api_error, infer_model_provider,
@@ -85,32 +91,25 @@ def _extract_multimodal_urls(result: dict) -> dict:
 # ── Config & Models ────────────────────────────────────────────────────
 
 
+def _build_config_models() -> list[dict]:
+    models = [{"id": "default", "name": MODEL_DISPLAY_NAMES.get("default", "默认模型")}]
+    for model_id in MODEL_SIZE_CONFIG:
+        models.append({
+            "id": model_id,
+            "name": MODEL_DISPLAY_NAMES.get(model_id, model_id),
+        })
+    return models
+
+
 @router.get("/config", response_model=ConfigResponse)
 async def get_config():
     has_backend_config = bool(DEFAULT_API_KEY and DEFAULT_API_ENDPOINT)
     return ConfigResponse(
         has_backend_config=has_backend_config,
         frontend_config_required=not has_backend_config,
-        models=[
-            {"id": "default", "name": "默认模型"},
-            {"id": "doubao-seedream-4-5-251128", "name": "豆包 Seedream 4.5"},
-            {"id": "doubao-seedream-4-0-250828", "name": "豆包 Seedream 4.0"},
-            {"id": "cogview-3-flash", "name": "智谱 CogView-3-Flash (免费)"},
-            {"id": "cogview-3-plus", "name": "智谱 CogView-3-Plus"},
-            {"id": "wanx-v1", "name": "通义万相 V1"},
-            {"id": "wanx-xl", "name": "通义万相 XL"},
-            {"id": "dall-e-3", "name": "DALL-E 3"},
-            {"id": "dall-e-2", "name": "DALL-E 2"},
-            {"id": "qwen-image-plus", "name": "通义千问 Qwen-Image-Plus"},
-            {"id": "qwen-image", "name": "通义千问 Qwen-Image"},
-            {"id": "qwen-image-2.0-pro", "name": "通义千问 Qwen-Image-2.0-Pro"},
-            {"id": "qwen-image-2.0", "name": "通义千问 Qwen-Image-2.0"},
-            {"id": "cogview-4", "name": "智谱 CogView-4"},
-            {"id": "cogview-4-plus", "name": "智谱 CogView-4-Plus"},
-            {"id": "stable-diffusion", "name": "Stable Diffusion"},
-        ],
-        sizes=["1024x1024", "1024x1792", "1792x1024", "2048x2048",
-               "1440x2560", "1920x2560", "2560x1440", "512x512"],
+        models=_build_config_models(),
+        sizes=DEFAULT_IMAGE_SIZES,
+        backend_configured_capabilities=BACKEND_CONFIGURED_CAPABILITIES,
     )
 
 
@@ -118,13 +117,22 @@ async def get_config():
 async def get_video_models():
     return {
         "models": [
-            {"id": "kling-v1", "name": "可灵 V1", "description": "性价比高，适合日常使用"},
-            {"id": "kling-v1-5", "name": "可灵 V1.5", "description": "画质提升，适合高质量需求"},
-            {"id": "jimeng-v1", "name": "即梦 V1", "description": "字节跳动，中文理解好"},
-            {"id": "runway-gen3", "name": "Runway Gen-3", "description": "专业级，运镜丰富"},
+            {
+                "id": m["id"],
+                "name": m["name"],
+                "description": m.get("description", ""),
+                "durations": m.get("durations", [5]),
+                "resolutions": m.get("resolutions", ["720p"]),
+                "provider": m.get("provider", ""),
+            }
+            for m in VIDEO_MODEL_MANIFEST
         ],
-        "resolutions": ["720p", "1080p", "4k"],
-        "durations": [3, 5, 10, 15],
+        "resolutions": sorted(set(
+            r for m in VIDEO_MODEL_MANIFEST for r in m.get("resolutions", [])
+        )),
+        "durations": sorted(set(
+            d for m in VIDEO_MODEL_MANIFEST for d in m.get("durations", [])
+        )),
     }
 
 
@@ -235,6 +243,7 @@ async def get_task_status(
     task_id: str,
     api_key: str = None,
     api_endpoint: str = None,
+    provider: str = None,
 ):
     key = api_key or KLING_API_KEY
     endpoint = api_endpoint or "https://api.klingai.com/v1/videos/generations"
@@ -242,34 +251,25 @@ async def get_task_status(
     if not key:
         return TaskStatusResponse(success=False, status="failed", error="未配置API密钥")
 
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-    }
+    adapter = get_adapter(provider)
+    headers = adapter.build_headers(key)
+    status_url = adapter.build_status_url(endpoint, task_id)
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(f"{endpoint}/{task_id}", headers=headers)
+            response = await client.get(status_url, headers=headers)
 
             if response.status_code != 200:
                 return TaskStatusResponse(success=False, status="failed", error=f"API错误: {response.text}")
 
-            result = response.json()
-            data = result.get("data") or result
-            task_status = str(data.get("task_status") or data.get("status") or "unknown").lower()
-
-            status_map = {
-                "submitted": "pending", "processing": "processing",
-                "succeed": "succeed", "failed": "failed",
-            }
-            mapped_status = status_map.get(task_status, "pending")
-            result_url = extract_result_url(data)
-            progress = data.get("progress")
+            parsed = adapter.parse_response(response.json())
 
             return TaskStatusResponse(
-                success=True, status=mapped_status,
-                progress=progress if isinstance(progress, int) else None,
-                result_url=result_url, data=data,
+                success=True,
+                status=parsed["status"],
+                progress=parsed["progress"],
+                result_url=parsed["result_url"],
+                data=parsed["raw_data"],
             )
     except Exception as e:
         return TaskStatusResponse(success=False, status="failed", error=f"查询失败: {str(e)}")
@@ -351,6 +351,14 @@ async def validate_api(request: ValidateRequest):
                 "instruction": "test",
             },
         }
+    elif provider_type in ["llm", "deepseek", "chatglm", "qwen"]:
+        # LLM 类型：发送最小化 chat completion 请求验证连通性
+        llm_model = request.model or "deepseek-chat"
+        test_payload = {
+            "model": llm_model,
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 1,
+        }
     else:
         return ValidateResponse(success=True, valid=False, message=f"不支持的供应商类型: {provider_type}")
 
@@ -386,55 +394,67 @@ async def validate_api(request: ValidateRequest):
 
 @router.get("/api/model-manifest", summary="获取模型能力注册表")
 async def get_model_manifest():
+    updated_at = "2026-06-12"
+
     def _recommended_sizes(model_cfg: dict) -> list[str]:
         supported = model_cfg.get("supported_sizes", [])
         return supported[:4] if isinstance(supported, list) else []
 
+    image_models = [
+        {
+            "id": model_id,
+            "name": MODEL_DISPLAY_NAMES.get(model_id, model_id),
+            "provider": infer_model_provider(model_id),
+            "capabilities": ["image"] + (["advanced_params"] if model_id in ("dall-e-3", "dall-e-2", "stable-diffusion") else []),
+            "supported_sizes": model_cfg.get("supported_sizes", []),
+            "recommended_sizes": _recommended_sizes(model_cfg),
+            "min_pixels": model_cfg.get("min_pixels"),
+            "max_pixels": model_cfg.get("max_pixels"),
+            "auto_scale": model_cfg.get("auto_scale", False),
+            "async": False,
+            "recommended_scenarios": infer_model_scenarios(model_id),
+            "limitations": model_cfg.get("note"),
+            "pricing": "paid",
+            "updated_at": updated_at,
+        }
+        for model_id, model_cfg in MODEL_SIZE_CONFIG.items()
+    ]
+
+    video_models = [
+        {
+            "id": m["id"],
+            "name": m["name"],
+            "description": m.get("description", ""),
+            "provider": m["provider"],
+            "capabilities": ["video", "image-to-video"],
+            "supported_sizes": [],
+            "durations": m.get("durations", [3, 5, 10, 15]),
+            "max_duration": max(m.get("durations", [15])),
+            "resolutions": m.get("resolutions", ["720p", "1080p"]),
+            "supports_image_input": True,
+            "async": True,
+            "pricing": "paid",
+            "recommended_scenarios": m.get("recommended_scenarios", []),
+            "limitations": m.get("limitations"),
+            "updated_at": updated_at,
+        }
+        for m in VIDEO_MODEL_MANIFEST
+    ]
+
+    edit_model = {
+        "id": EDIT_MODEL_MANIFEST["id"],
+        "name": EDIT_MODEL_MANIFEST["name"],
+        "provider": EDIT_MODEL_MANIFEST["provider"],
+        "capabilities": ["edit"],
+        "supported_sizes": [],
+        "async": True,
+        "pricing": "paid",
+        "recommended_scenarios": EDIT_MODEL_MANIFEST.get("recommended_scenarios", []),
+        "limitations": EDIT_MODEL_MANIFEST.get("limitations"),
+        "updated_at": updated_at,
+    }
+
     return {
-        "updated_at": "2026-05-07",
-        "models": [
-            {
-                "id": model_id,
-                "provider": infer_model_provider(model_id),
-                "capabilities": ["image"],
-                "supported_sizes": model_cfg.get("supported_sizes", []),
-                "recommended_sizes": _recommended_sizes(model_cfg),
-                "min_pixels": model_cfg.get("min_pixels"),
-                "max_pixels": model_cfg.get("max_pixels"),
-                "auto_scale": model_cfg.get("auto_scale", False),
-                "async": False,
-                "recommended_scenarios": infer_model_scenarios(model_id),
-                "limitations": model_cfg.get("note"),
-                "pricing": "paid",
-                "updated_at": "2026-05-07",
-            }
-            for model_id, model_cfg in MODEL_SIZE_CONFIG.items()
-        ] + [
-            {
-                "id": "kling-v1",
-                "provider": "kling",
-                "capabilities": ["video", "image-to-video"],
-                "supported_sizes": [],
-                "durations": [3, 5, 10, 15],
-                "max_duration": 15,
-                "resolutions": ["720p", "1080p"],
-                "supports_image_input": True,
-                "async": True,
-                "pricing": "paid",
-                "recommended_scenarios": ["图生视频", "短视频开场", "产品动态展示"],
-                "limitations": "视频生成通常为异步任务，需要轮询任务状态",
-                "updated_at": "2026-05-07",
-            },
-            {
-                "id": "wanx2.1-imageedit",
-                "provider": "aliyun",
-                "capabilities": ["edit"],
-                "supported_sizes": [],
-                "async": True,
-                "pricing": "paid",
-                "recommended_scenarios": ["局部重绘", "指令编辑", "扩图"],
-                "limitations": "编辑能力依赖源图质量与蒙版质量",
-                "updated_at": "2026-05-07",
-            },
-        ],
+        "updated_at": updated_at,
+        "models": image_models + video_models + [edit_model],
     }

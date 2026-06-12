@@ -23,6 +23,8 @@
 4. 配置环境变量：复制 `backend/.env.example` 为 `backend/.env` 并填写
 5. 启动服务：`python main.py`
 
+首次启动时，后端会自动将 `backend/data/*.json` 灌入 SQLite 知识库（`knowledge.db` 在 `.gitignore` 中，不会提交到仓库）。一般**无需**手动运行 `migrate_json_to_sqlite.py`；仅在需要强制全量同步 JSON 时使用该脚本。
+
 默认监听：`http://127.0.0.1:8000`
 
 可用接口（核心）：

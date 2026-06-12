@@ -350,6 +350,12 @@ def knowledge_search(query: str, scene: str = "general", type_filter: list[str] 
         except sqlite3.OperationalError:
             return _knowledge_like_search(conn, query, scene, type_filter, limit)
 
+        # macOS 上 FTS5 unicode61 对中文分词行为不可预测（如"赛博朋克"可能整体为
+        # 一个 token，"电商"可能独立），导致某些中文短语 FTS5 返回空结果。
+        # 自动回退 LIKE 搜索保证中文查询有结果。
+        if not rows and any("\u4e00" <= c <= "\u9fff" for c in query):
+            return _knowledge_like_search(conn, query, scene, type_filter, limit)
+
         results = []
         for row in rows:
             entry = _deserialize_knowledge(row)
@@ -369,31 +375,31 @@ def knowledge_search(query: str, scene: str = "general", type_filter: list[str] 
 
 
 def _build_fts_query(query: str) -> str:
-    """将用户查询转为 FTS5 查询表达式
-
-    FTS5 unicode61 tokenizer 将中文字符逐字拆分，
-    因此中文短语需要用前缀匹配（赛*）或完整短语匹配。
-    """
+    """将用户查询转为 FTS5 查询表达式"""
     query = query.strip().lower()
     if not query:
         return ""
     parts = [p for p in query.split() if p]
     if not parts:
         return ""
-    tokens = []
-    for part in parts:
-        if any("一" <= c <= "鿿" for c in part):
-            tokens.append(f'"{part}"')
-        else:
-            tokens.append(f'"{part}"')
+    tokens = [f'"{part}"' for part in parts]
     return " OR ".join(tokens)
 
 
 def _knowledge_like_search(conn: sqlite3.Connection, query: str, scene: str, type_filter: list[str] | None, limit: int) -> list[dict]:
-    """LIKE 回退搜索"""
-    like_pattern = f"%{query}%"
-    sql = "SELECT * FROM knowledge WHERE (title LIKE ? OR content LIKE ? OR tags LIKE ?)"
-    params: list = [like_pattern, like_pattern, like_pattern]
+    """LIKE 回退搜索（支持多词 AND）"""
+    parts = [p.strip() for p in query.split() if p.strip()]
+    if not parts:
+        return []
+
+    conditions = []
+    params: list = []
+    for part in parts:
+        like_pattern = f"%{part}%"
+        conditions.append("(title LIKE ? OR content LIKE ? OR tags LIKE ?)")
+        params.extend([like_pattern, like_pattern, like_pattern])
+
+    sql = f"SELECT * FROM knowledge WHERE {' AND '.join(conditions)}"
     if type_filter:
         placeholders = ",".join("?" for _ in type_filter)
         sql += f" AND type IN ({placeholders})"

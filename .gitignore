@@ -13,6 +13,8 @@ backend/.env
 dist/
 build/
 *.db
+*.db-shm
+*.db-wal
 
 # Node
 node_modules/

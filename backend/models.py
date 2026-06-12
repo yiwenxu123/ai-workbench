@@ -66,6 +66,7 @@ class ConfigResponse(BaseModel):
     frontend_config_required: bool
     models: list
     sizes: list
+    backend_configured_capabilities: dict[str, bool] = {}
 
 
 class VideoGenerateRequest(BaseModel):
@@ -132,6 +133,7 @@ class ValidateRequest(BaseModel):
     api_key: str = Field(..., min_length=1, max_length=200)
     api_endpoint: str = Field(..., min_length=1, max_length=500)
     provider_type: str = Field(default="image", max_length=50)
+    model: Optional[str] = Field(default=None, max_length=100)
 
 
 class ValidateResponse(BaseModel):
