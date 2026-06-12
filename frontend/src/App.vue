@@ -2,7 +2,7 @@
   <n-config-provider :theme="naiveTheme" :theme-overrides="BRAND_THEME_OVERRIDES">
     <n-dialog-provider>
       <n-message-provider>
-        <!-- 加载骨架屏 -->
+        <!-- 加载骨架屏：匹配真实 Tab + 内容区布局 -->
         <div v-if="isInitializing" class="loading-skeleton">
           <div class="sk-header">
             <div class="sk-logo"></div>
@@ -11,14 +11,18 @@
               <div class="sk-btn sk-btn-primary"></div>
             </div>
           </div>
+          <div class="sk-tabs">
+            <div class="sk-tab sk-tab-active"></div>
+            <div class="sk-tab"></div>
+            <div class="sk-tab"></div>
+          </div>
           <div class="sk-body">
-            <div class="sk-sider">
+            <div class="sk-panel">
               <div class="sk-line sk-line-short"></div>
-              <div class="sk-block"></div>
-              <div class="sk-block sk-block-sm"></div>
+              <div class="sk-block sk-block-input"></div>
               <div class="sk-btn sk-btn-wide"></div>
             </div>
-            <div class="sk-content">
+            <div class="sk-result">
               <div class="sk-block sk-block-tall"></div>
             </div>
           </div>
@@ -51,7 +55,7 @@
           <n-layout class="app-body">
             <n-layout-content class="app-content">
               <div class="content-wrapper">
-                <n-tabs v-model:value="mainTab" type="line" animated class="main-tabs">
+                <n-tabs v-model:value="mainTab" type="card" animated class="main-tabs">
                   <n-tab-pane name="image">
                     <template #tab>
                       <div class="tab-label"><n-icon><ImageOutline /></n-icon>图像生成</div>
@@ -76,7 +80,7 @@
           </n-layout>
 
           <n-drawer v-model:show="panelOpen" :width="drawerWidth" placement="right" :trap-focus="false" :block-scroll="false">
-            <n-drawer-content title="资源与工具" closable>
+            <n-drawer-content title="创作资源" closable>
               <n-tabs v-model:value="rightTab" type="line" size="small" class="drawer-tabs">
                 <n-tab-pane name="templates">
                   <template #tab><div class="tab-label"><n-icon><LibraryOutline /></n-icon>模板</div></template>
@@ -159,9 +163,9 @@ const rightTab = ref('templates')
 
 const SK = 'ai_studio_panel_'
 const adminModeEnabled = ref(localStorage.getItem('ai_studio_admin_mode') === 'true')
-// 首次访问默认展开右侧面板（让模板/知识/作品/分析等核心功能可见）
+// 面板默认隐藏，让任务入口（图像/视频/编辑）占据主视野
 const storedPanelOpen = localStorage.getItem(SK + 'open')
-const panelOpen = ref(storedPanelOpen === null ? true : storedPanelOpen === 'true')
+const panelOpen = ref(storedPanelOpen === null ? false : storedPanelOpen === 'true')
 const windowWidth = ref(typeof window === 'undefined' ? 520 : window.innerWidth)
 const drawerWidth = computed(() => Math.min(520, windowWidth.value))
 
@@ -291,7 +295,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e1b4b 100%);
+  background: linear-gradient(135deg, var(--header-bg) 0%, #1e293b 50%, #1e1b4b 100%);
 }
 
 .sk-logo {
@@ -321,10 +325,25 @@ onUnmounted(() => {
   background-size: 400px 100%;
   animation: sk-shimmer 1.5s ease-in-out infinite;
 }
-.sk-body {
-  display: flex; gap: var(--panel-gap); padding: 24px 32px; flex: 1; min-height: 0;
+/* ── 骨架屏 Tabs ── */
+.sk-tabs {
+  display: flex; gap: 8px; padding: 12px 32px 0;
+  border-bottom: 1px solid var(--gray-200);
 }
-.sk-sider { flex: 0 0 380px; display: flex; flex-direction: column; gap: 12px; }
+.sk-tab {
+  width: 100px; height: 32px; border-radius: 8px 8px 0 0;
+  background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-100) 50%, var(--gray-200) 75%);
+  background-size: 400px 100%;
+  animation: sk-shimmer 1.5s ease-in-out infinite;
+}
+.sk-tab-active {
+  background: linear-gradient(90deg, var(--brand-100) 25%, var(--brand-50) 50%, var(--brand-100) 75%);
+  background-size: 400px 100%;
+}
+.sk-body {
+  display: flex; gap: var(--panel-gap); padding: 20px 32px; flex: 1; min-height: 0;
+}
+.sk-panel { flex: 0 0 380px; display: flex; flex-direction: column; gap: 12px; }
 .sk-line {
   height: 14px; border-radius: 4px;
   background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-100) 50%, var(--gray-200) 75%);
@@ -338,9 +357,9 @@ onUnmounted(() => {
   background-size: 400px 100%;
   animation: sk-shimmer 1.5s ease-in-out infinite;
 }
-.sk-block-sm { flex: 0.5; }
+.sk-block-input { flex: 0 0 120px; }
 .sk-block-tall { flex: 1; min-height: 300px; }
-.sk-content { flex: 1; border-radius: 10px; display: flex; flex-direction: column; }
+.sk-result { flex: 1; border-radius: 10px; display: flex; flex-direction: column; }
 .sk-loading-text {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   font-size: 13px; color: var(--text-secondary);
@@ -360,7 +379,7 @@ onUnmounted(() => {
   padding: 0 24px;
   display: flex;
   align-items: center;
-  background: #111827;
+  background: var(--header-bg);
   border-bottom: 1px solid rgba(255,255,255,0.04);
   position: relative;
   z-index: 100;
@@ -442,41 +461,41 @@ onUnmounted(() => {
   .content-wrapper { padding: 0 40px; }
 }
 
-/* ── Tabs — App-style navigation ── */
+/* ── Tabs — Card-style navigation ── */
 .main-tabs {
   height: 100%;
 }
 
 .main-tabs :deep(.n-tabs-nav) {
-  padding: 0;
-  border-bottom: 1px solid var(--border-light);
+  padding: 0 0 0 var(--content-padding);
+  background: transparent;
 }
 
 .main-tabs :deep(.n-tabs-tab) {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
-  padding: 10px 16px;
-  transition: color var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
-  opacity: 0.55;
+  padding: 10px 20px;
+  opacity: 0.7;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  transition: color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out),
+              opacity var(--duration-fast) var(--ease-out);
 }
 
 .main-tabs :deep(.n-tabs-tab:hover) {
-  opacity: 0.8;
-  background: transparent;
+  opacity: 0.9;
+  background: var(--bg-subtle);
 }
 
 .main-tabs :deep(.n-tabs-tab--active) {
   opacity: 1;
   font-weight: 600;
+  color: var(--brand-600);
+  background: var(--bg-card);
 }
 
 .main-tabs :deep(.n-tabs-tab--active .n-icon) {
   color: var(--brand-500);
-}
-
-.main-tabs :deep(.n-tabs-bar) {
-  height: 2px;
-  background: var(--brand-500);
 }
 
 .main-tabs :deep(.n-tabs-pane-wrapper) {
@@ -505,9 +524,10 @@ onUnmounted(() => {
 .tab-label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .drawer-tabs { margin-bottom: 16px; }
 .drawer-body { height: 100%; overflow-y: auto; }
+
 </style>

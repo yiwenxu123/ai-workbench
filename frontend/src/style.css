@@ -75,6 +75,7 @@
 
   /* Layout */
   --header-height: 56px;
+  --header-bg: #111827;
   --panel-gap: 20px;
   --panel-padding: 20px;
   --panel-sider-width: 380px;

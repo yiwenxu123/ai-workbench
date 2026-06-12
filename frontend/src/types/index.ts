@@ -14,3 +14,4 @@ export type { Prompt, History, PromptCategory, PromptFormData, PromptTemplate, T
 export type { GenerateParams, GenerateResult, ConfigResult, ApiError, ModelManifest, ModelCapability } from './api'
 export type { ApiProvider, VisionProvider, LLMProvider, ProviderType, ProviderCapability } from './provider'
 export type { EnhancedHistory, Note } from './history'
+export type { TermCategory, TermEntry, CaseExample } from './knowledge'

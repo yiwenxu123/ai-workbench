@@ -33,10 +33,13 @@ export interface ConfigResult {
   frontend_config_required: boolean
   models: Array<{ id: string; name: string }>
   sizes: string[]
+  backend_configured_capabilities: Record<string, boolean>
 }
 
 export interface ModelCapability {
   id: string
+  name?: string
+  description?: string
   provider: string
   capabilities: string[]
   supported_sizes: string[]

@@ -5,7 +5,7 @@
 
 import axios, { type AxiosInstance } from 'axios'
 import { config } from '../config'
-import type { GenerateParams, GenerateResult, ConfigResult, ModelManifest, UnifiedTemplate } from '../types/api'
+import type { GenerateParams, GenerateResult, ConfigResult, ModelManifest, UnifiedTemplate, KnowledgeEntry } from '../types/api'
 
 export interface VideoGenerateParams {
   prompt: string
@@ -137,7 +137,7 @@ class ApiService {
     return res.data
   }
 
-  async checkTaskStatus(taskId: string, params?: { api_key?: string; api_endpoint?: string }): Promise<TaskStatusResult> {
+  async checkTaskStatus(taskId: string, params?: { api_key?: string; api_endpoint?: string; provider?: string }): Promise<TaskStatusResult> {
     const res = await this.client.get<TaskStatusResult>(`/task-status/${encodeURIComponent(taskId)}`, {
       params
     })
@@ -161,7 +161,7 @@ class ApiService {
     return res.data
   }
 
-  async validateApi(params: { api_key: string; api_endpoint: string; provider_type: string }): Promise<{ success: boolean; valid: boolean; message: string; details?: string }> {
+  async validateApi(params: { api_key: string; api_endpoint: string; provider_type: string; model?: string }): Promise<{ success: boolean; valid: boolean; message: string; details?: string }> {
     const res = await this.client.post('/validate-api', params)
     return res.data
   }
@@ -178,6 +178,11 @@ class ApiService {
 
   async getUnifiedTemplates(): Promise<UnifiedTemplate[]> {
     const res = await this.client.get<UnifiedTemplate[]>('/api/unified-templates')
+    return res.data
+  }
+
+  async getKnowledge(): Promise<KnowledgeEntry[]> {
+    const res = await this.client.get<KnowledgeEntry[]>('/api/knowledge')
     return res.data
   }
 

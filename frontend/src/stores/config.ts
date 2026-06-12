@@ -24,6 +24,16 @@ export const useConfigStore = defineStore('config', () => {
     return !!(apiKey.value && apiEndpoint.value) || !!(serverConfig.value?.has_backend_config)
   })
 
+  /** 后端已为哪些能力配置了 API Key */
+  const backendConfiguredCapabilities = computed<Record<string, boolean>>(() => {
+    return serverConfig.value?.backend_configured_capabilities ?? {}
+  })
+
+  /** 检查某个能力是否已有后端 Key 配置 */
+  function isBackendConfigured(capability: string): boolean {
+    return backendConfiguredCapabilities.value[capability] ?? false
+  }
+
   function saveApiConfig(key: string, endpoint: string): void {
     apiKey.value = key
     apiEndpoint.value = endpoint
@@ -61,6 +71,8 @@ export const useConfigStore = defineStore('config', () => {
     error,
     backendAvailable,
     isConfigured,
+    backendConfiguredCapabilities,
+    isBackendConfigured,
     saveApiConfig,
     clearApiConfig,
     loadServerConfig,
