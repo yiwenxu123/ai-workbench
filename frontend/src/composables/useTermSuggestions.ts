@@ -7,7 +7,19 @@ import { ref, watch, type Ref } from 'vue'
 import axios from 'axios'
 import { config } from '../config'
 import { useDataStore } from '../stores'
-import type { TermEntry } from '../data/terminology'
+import type { TermCategory } from '../types/knowledge'
+
+interface LocalTermEntry {
+  id: string
+  name: string
+  nameEn?: string
+  category: TermCategory
+  description: string
+  usage: string
+  examples: string[]
+  relatedTerms?: string[]
+  tips?: string
+}
 
 const SCENE_KEYWORDS: Record<string, string[]> = {
   ecommerce: ['电商', '商品', '产品', '上架', '主图', '卖货', '店铺', '淘宝', '京东', '白底', '场景图'],
@@ -24,7 +36,7 @@ const SCENE_KEYWORDS: Record<string, string[]> = {
 }
 
 export interface TermSuggestion {
-  term: TermEntry
+  term: LocalTermEntry
   relevance: number
   keyword: string
   scene?: string
@@ -40,8 +52,8 @@ function detectScene(text: string): string | undefined {
   return undefined
 }
 
-/** 将 API 返回的 KnowledgeEntry 映射为 TermEntry */
-function mapToTermEntry(item: any): TermEntry {
+/** 将 API 返回的 KnowledgeEntry 映射为 LocalTermEntry */
+function mapToLocalTermEntry(item: any): LocalTermEntry {
   return {
     id: item.id || '',
     name: item.title || '',
@@ -56,9 +68,9 @@ function mapToTermEntry(item: any): TermEntry {
 }
 
 /** 本地客户端匹配（降级方案） */
-function localMatch(text: string, terms: TermEntry[]): TermSuggestion[] {
+function localMatch(text: string, terms: LocalTermEntry[]): TermSuggestion[] {
   const scene = detectScene(text)
-  const scored: { term: TermEntry; score: number; keyword: string; scene?: string }[] = []
+  const scored: { term: LocalTermEntry; score: number; keyword: string; scene?: string }[] = []
 
   for (const term of terms) {
     let bestScore = 0
@@ -161,7 +173,7 @@ export function useTermSuggestions(prompt: Ref<string>) {
       })
 
       if (resp.data?.items?.length) {
-        const mapped = resp.data.items.map((item: any) => mapToTermEntry(item))
+        const mapped = resp.data.items.map((item: any) => mapToLocalTermEntry(item))
         // 用本地匹配逻辑对 API 结果重新评分
         const result = localMatch(text, mapped)
         suggestions.value = result
@@ -171,8 +183,8 @@ export function useTermSuggestions(prompt: Ref<string>) {
       // API 不可用，降级到本地匹配
     }
 
-    // 降级：使用 dataStore 中的术语数据
-    const localTerms = dataStore.terms as TermEntry[]
+    // 降级：使用 dataStore 中的术语数据（KnowledgeEntry → LocalTermEntry）
+    const localTerms = dataStore.terms.map(mapToLocalTermEntry)
     if (localTerms.length) {
       suggestions.value = localMatch(text, localTerms)
     } else {

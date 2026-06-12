@@ -86,18 +86,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useDataStore } from '../../stores'
-
-type TermCategory = 'style' | 'lighting' | 'composition' | 'color' | 'material' | 'mood' | 'technique'
-
-const termCategoryConfig: Record<TermCategory, { label: string; icon: string; color: string }> = {
-  style: { label: '风格', icon: 'Palette', color: '#1890ff' },
-  lighting: { label: '光影', icon: 'Lightbulb', color: '#fadb14' },
-  composition: { label: '构图', icon: 'Ruler', color: '#722ed1' },
-  color: { label: '色彩', icon: 'Rainbow', color: '#eb2f96' },
-  material: { label: '材质', icon: 'BrickWall', color: '#fa8c16' },
-  mood: { label: '氛围', icon: 'Moon', color: '#13c2c2' },
-  technique: { label: '技法', icon: 'Wrench', color: '#52c41a' }
-}
+import { termCategoryConfig } from '../../config/categories'
+import type { TermCategory } from '../../types/knowledge'
 
 const emit = defineEmits<{
   insert: [keyword: string]

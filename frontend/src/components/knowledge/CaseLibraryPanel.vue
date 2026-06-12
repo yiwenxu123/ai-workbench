@@ -45,9 +45,18 @@
         <n-list-item v-for="caseItem in filteredCases" :key="caseItem.id">
           <n-thing :title="caseItem.name" :description="caseItem.description">
             <template #avatar>
-              <n-tag :type="getCategoryType(caseItem.category)" size="small">
-                {{ getCategoryLabel(caseItem.category) }}
-              </n-tag>
+              <n-space vertical :size="4">
+                <n-tag :type="getCategoryType(caseItem.category)" size="small">
+                  {{ getCategoryLabel(caseItem.category) }}
+                </n-tag>
+                <n-tag
+                  v-if="!caseItem.isUserCase && staleKnowledgeLabel(caseItem.lastVerified)"
+                  size="tiny"
+                  type="warning"
+                >
+                  {{ staleKnowledgeLabel(caseItem.lastVerified) }}
+                </n-tag>
+              </n-space>
             </template>
             <template #action>
               <n-space>
@@ -227,9 +236,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive } from 'vue'
 import { useMessage } from 'naive-ui'
-import { caseCategories, adaptPrompt } from '../../data/caseLibrary'
+import { caseCategories, adaptPrompt } from '../../config/categories'
+import { staleKnowledgeLabel } from '../../utils/knowledgeFreshness'
 import { db, type UserCase } from '../../db'
-import type { CaseExample } from '../../data/caseLibrary'
+import type { CaseExample } from '../../types/knowledge'
 import { useDataStore } from '../../stores'
 
 const emit = defineEmits<{
@@ -266,7 +276,7 @@ const formData = reactive({
 function mapApiCase(c: any): CaseExample {
   return {
     id: c.id || '',
-    name: c.name || '',
+    name: c.name || c.title || '',
     category: c.category || 'product',
     description: c.description || '',
     prompt: c.prompt || '',
@@ -283,6 +293,7 @@ function mapApiCase(c: any): CaseExample {
     embedUrl: c.embedUrl,
     thumbnailUrl: c.thumbnailUrl,
     isUserCase: false,
+    lastVerified: c.lastVerified || '',
   }
 }
 

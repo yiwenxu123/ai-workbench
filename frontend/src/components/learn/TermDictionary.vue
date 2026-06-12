@@ -40,15 +40,20 @@
         >
           <div class="term-header">
             <span class="term-name">{{ term.name }}</span>
-            <n-tag
-              size="tiny"
-              :style="{ 
-                backgroundColor: getCategoryColor(term.category) + '20',
-                color: getCategoryColor(term.category)
-              }"
-            >
-              {{ getCategoryLabel(term.category) }}
-            </n-tag>
+            <n-space :size="4">
+              <n-tag
+                size="tiny"
+                :style="{ 
+                  backgroundColor: getCategoryColor(term.category) + '20',
+                  color: getCategoryColor(term.category)
+                }"
+              >
+                {{ getCategoryLabel(term.category) }}
+              </n-tag>
+              <n-tag v-if="staleKnowledgeLabel(term.lastVerified)" size="tiny" type="warning">
+                {{ staleKnowledgeLabel(term.lastVerified) }}
+              </n-tag>
+            </n-space>
           </div>
           <div class="term-name-en" v-if="term.nameEn">{{ term.nameEn }}</div>
           <div class="term-desc">{{ term.description }}</div>
@@ -101,15 +106,20 @@
         >
           <div class="term-header">
             <span class="term-name">{{ term.name }}</span>
-            <n-tag
-              size="tiny"
-              :style="{ 
-                backgroundColor: getCategoryColor(term.category) + '20',
-                color: getCategoryColor(term.category)
-              }"
-            >
-              {{ getCategoryLabel(term.category) }}
-            </n-tag>
+            <n-space :size="4">
+              <n-tag
+                size="tiny"
+                :style="{ 
+                  backgroundColor: getCategoryColor(term.category) + '20',
+                  color: getCategoryColor(term.category)
+                }"
+              >
+                {{ getCategoryLabel(term.category) }}
+              </n-tag>
+              <n-tag v-if="staleKnowledgeLabel(term.lastVerified)" size="tiny" type="warning">
+                {{ staleKnowledgeLabel(term.lastVerified) }}
+              </n-tag>
+            </n-space>
           </div>
           <div class="term-name-en" v-if="term.nameEn">{{ term.nameEn }}</div>
           <div class="term-desc">{{ term.description }}</div>
@@ -206,9 +216,12 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { NCard, NInput, NIcon, NTag, NTabs, NTabPane, NScrollbar, NEmpty, NModal, NDivider, NAlert, NButton } from 'naive-ui'
+import { NCard, NInput, NIcon, NTag, NTabs, NTabPane, NScrollbar, NEmpty, NModal, NDivider, NAlert, NButton, NSpace } from 'naive-ui'
+import { staleKnowledgeLabel } from '../../utils/knowledgeFreshness'
 import { SearchOutline, HelpCircleOutline } from '@vicons/ionicons5'
-import { terminology, termCategoryConfig, searchTerms, getTermsByCategory, type TermEntry, type TermCategory } from '../../data/terminology'
+import { termCategoryConfig } from '../../config/categories'
+import type { TermEntry, TermCategory } from '../../types/knowledge'
+import { useDataStore } from '../../stores'
 
 withDefaults(defineProps<{
   showCard?: boolean
@@ -220,6 +233,7 @@ const emit = defineEmits<{
   (e: 'insert', text: string): void
 }>()
 
+const dataStore = useDataStore()
 const searchQuery = ref('')
 const activeCategory = ref<string>('all')
 const showTermDetail = ref(false)
@@ -233,22 +247,39 @@ const categories = computed(() =>
   }))
 )
 
+/** 将 API KnowledgeEntry 映射为 TermEntry */
+function mapToTerm(item: any): TermEntry {
+  return {
+    id: item.id || '',
+    name: item.title || '',
+    nameEn: item.tags?.[0] || '',
+    category: item.category || 'style',
+    description: item.content || '',
+    usage: Array.isArray(item.tips) ? item.tips.join('；') : (item.tips || ''),
+    examples: item.examples || [],
+    relatedTerms: item.relatedTerms || [],
+    tips: Array.isArray(item.tips) ? item.tips[0] : item.tips,
+    lastVerified: item.lastVerified || '',
+  }
+}
+
 const filteredTerms = computed(() => {
-  let terms: TermEntry[]
+  const raw = dataStore.terms as any[] || []
+  const allTerms = raw.map(mapToTerm)
+  const q = searchQuery.value.toLowerCase().trim()
   
-  if (activeCategory.value === 'all') {
-    terms = terminology
-  } else {
-    terms = getTermsByCategory(activeCategory.value as TermCategory)
-  }
+  const filtered = activeCategory.value === 'all'
+    ? allTerms
+    : allTerms.filter(t => t.category === activeCategory.value)
   
-  if (searchQuery.value) {
-    return searchTerms(searchQuery.value).filter(t => 
-      activeCategory.value === 'all' || t.category === activeCategory.value
-    )
-  }
+  if (!q) return filtered
   
-  return terms
+  return filtered.filter(t =>
+    t.name.includes(q) ||
+    t.nameEn?.toLowerCase().includes(q) ||
+    t.description.includes(q) ||
+    t.examples.some(ex => ex.includes(q))
+  )
 })
 
 function getCategoryColor(category: TermCategory): string {

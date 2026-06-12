@@ -70,7 +70,7 @@ import PromptTemplatePanel from './knowledge/PromptTemplatePanel.vue'
 import NegativePromptPanel from './knowledge/NegativePromptPanel.vue'
 import IndustryKnowledgePanel from './knowledge/IndustryKnowledgePanel.vue'
 import CaseLibraryPanel from './knowledge/CaseLibraryPanel.vue'
-import type { CaseExample } from '../data/caseLibrary'
+import type { CaseExample } from '../types/knowledge'
 
 const emit = defineEmits<{
   insert: [keyword: string]
