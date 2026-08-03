@@ -236,3 +236,18 @@ class TestShotLanguageSearch:
         resp = client.post("/api/knowledge/search", json={"query": "运镜", "limit": 5})
         assert resp.status_code == 200
         assert any(e["type"] == "shot_language" for e in resp.json()["items"])
+
+
+class TestHealthAPI:
+    def test_health_check(self, client):
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["database"]["ok"] is True
+        assert data["apiEndpoints"] > 0
+
+    def test_root_alias(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"

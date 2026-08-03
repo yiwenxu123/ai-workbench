@@ -18,7 +18,7 @@ from models import FetchUrlRequest, IngestExtractRequest, IngestSaveRequest
 from routers.generation import router as generation_router
 from routers.content import router as content_router
 
-from knowledge_db import init_db as init_knowledge_db
+from knowledge_db import init_db as init_knowledge_db, get_db
 
 app = FastAPI(
     title="AI绘图工作台 API",
@@ -93,6 +93,31 @@ async def validation_exception_handler(request: Request, exc):
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "AI绘图工作台API运行中", "version": "2.2.0"}
+
+
+@app.get("/health", summary="健康检查（服务状态/数据库/工具集）", tags=["System"])
+def health_check():
+    """MCP 与监控探针统一入口：状态、数据库读写、API 工具数量。"""
+    from knowledge_db import DB_PATH, init_db
+
+    db_ok = True
+    db_error = ""
+    try:
+        init_db()
+        with get_db() as conn:
+            conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()
+    except Exception as e:  # noqa: BLE001
+        db_ok = False
+        db_error = str(e)
+
+    openapi_paths = [r.path for r in app.routes if getattr(r, "path", "").startswith("/api/")]
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "name": "ai-workbench-api",
+        "version": "2.2.0",
+        "database": {"path": str(DB_PATH), "ok": db_ok, "error": db_error or None},
+        "apiEndpoints": len(openapi_paths),
+    }
 
 
 # ── Include Routers ──────────────────────────────────────────────────
