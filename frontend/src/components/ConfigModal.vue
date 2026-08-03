@@ -41,7 +41,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { NModal, NAlert, NDivider, useMessage } from 'naive-ui'
+import { NModal, NAlert, NDivider } from 'naive-ui'
 import { useConfigStore, useProviderStore } from '../stores'
 import { Image, Brain, Settings } from 'lucide-vue-next'
 import type { ProviderCapability } from '../types/provider'
@@ -55,8 +55,6 @@ import LLMProviders from './config/LLMProviders.vue'
 import VisionProviders from './config/VisionProviders.vue'
 import AdminPanel from './config/AdminPanel.vue'
 import CustomProviderModal from './config/CustomProviderModal.vue'
-
-const message = useMessage()
 
 const configStore = useConfigStore()
 const providerStore = useProviderStore()

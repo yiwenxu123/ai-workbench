@@ -177,7 +177,7 @@ const filteredQuestions = computed(() => {
 const questions = ref<QuizQuestion[]>([])
 const totalQuestions = computed(() => filteredQuestions.value.length)
 
-const currentQuestion = computed(() => questions.value[currentIndex.value])
+const currentQuestion = computed(() => questions.value[currentIndex.value]!)
 
 const isCorrect = computed(() => {
   return selectedAnswer.value === currentQuestion.value?.correctAnswer
@@ -282,7 +282,9 @@ function shuffleArray<T>(arr: T[]): T[] {
   const result = [...arr]
   for (let i = result.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-    ;[result[i], result[j]] = [result[j], result[i]]
+    const tmp = result[i]
+    result[i] = result[j]!
+    result[j] = tmp!
   }
   return result
 }

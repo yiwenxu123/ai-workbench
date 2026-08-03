@@ -83,6 +83,11 @@ async def get_unified_templates():
             "recommendedResolution": item.get("recommendedResolution"),
             "tips": item.get("tips", []),
             "tags": item.get("tags", []),
+            "name": item.get("name"),
+            "festival": item.get("festival"),
+            "festivalName": item.get("festivalName"),
+            "colorScheme": item.get("colorScheme", []),
+            "elements": item.get("elements", []),
         })
     return unified
 

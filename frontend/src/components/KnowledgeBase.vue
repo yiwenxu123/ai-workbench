@@ -71,11 +71,11 @@ import NegativePromptPanel from './knowledge/NegativePromptPanel.vue'
 import IndustryKnowledgePanel from './knowledge/IndustryKnowledgePanel.vue'
 import CaseLibraryPanel from './knowledge/CaseLibraryPanel.vue'
 import type { CaseExample } from '../types/knowledge'
-import type { CameraMovement } from '../data/shotLanguage'
+import type { CameraMovementOption } from '../data/shotLanguage'
 
 const emit = defineEmits<{
   insert: [keyword: string]
-  gotoVideo: [movement?: CameraMovement]
+  gotoVideo: [movement?: CameraMovementOption]
 }>()
 
 const message = useMessage()
@@ -106,7 +106,7 @@ function handleUseCase(caseExample: CaseExample) {
   message.success('案例提示词已应用')
 }
 
-function handleGotoVideo(movement?: CameraMovement) {
+function handleGotoVideo(movement?: CameraMovementOption) {
   emit('gotoVideo', movement)
 }
 </script>

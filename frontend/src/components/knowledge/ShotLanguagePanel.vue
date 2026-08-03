@@ -109,7 +109,7 @@
           </div>
           <n-grid :cols="2" :x-gap="8" :y-gap="8">
             <n-gi v-for="shot in shotTypes" :key="shot.id">
-              <div class="basic-card" @click="handleInsertKeyword(shot.keywords[0])">
+              <div class="basic-card" @click="handleInsertKeyword(shot.keywords[0] ?? shot.name)">
                 <div class="basic-title">{{ shot.name }}</div>
                 <div class="basic-en">{{ shot.nameEn }}</div>
               </div>
@@ -124,7 +124,7 @@
           </div>
           <n-grid :cols="2" :x-gap="8" :y-gap="8">
             <n-gi v-for="angle in cameraAngles" :key="angle.id">
-              <div class="basic-card" @click="handleInsertKeyword(angle.keywords[0])">
+              <div class="basic-card" @click="handleInsertKeyword(angle.keywords[0] ?? angle.name)">
                 <div class="basic-title">{{ angle.name }}</div>
                 <div class="basic-en">{{ angle.nameEn }}</div>
               </div>
@@ -366,21 +366,21 @@ import {
   getCategoryMeta,
   getCameraMovementById,
 } from '../../data/shotLanguage'
-import type { CameraMovement, CameraMovementCategory, EmotionTag, ShotCombination, ShotType } from '../../data/shotLanguage'
+import type { CameraMovement, CameraMovementCategory, CameraMovementOption, EmotionTag, ShotCombination, ShotType } from '../../data/shotLanguage'
 import ShotLanguageQuiz from './ShotLanguageQuiz.vue'
 
 const emit = defineEmits<{
   insert: [keyword: string]
-  gotoVideo: [movement?: CameraMovement]
+  gotoVideo: [movement?: CameraMovementOption]
 }>()
 
 const message = useMessage()
 
 const searchText = ref('')
-const activeCategory = ref<CameraMovementCategory | 'basics' | 'combos'>('basic_direction')
+const activeCategory = ref<CameraMovementCategory | 'basics' | 'combos' | 'quiz'>('basic_direction')
 const showDetailModal = ref(false)
 const showComboModal = ref(false)
-const currentMovement = ref<CameraMovement | null>(null)
+const currentMovement = ref<CameraMovementOption | null>(null)
 const currentCombo = ref<ShotCombination | null>(null)
 
 const filteredMovements = computed(() => {
@@ -408,10 +408,10 @@ function getCategoryTagType(cat: CameraMovementCategory): 'default' | 'primary' 
   const typeMap: Record<CameraMovementCategory, any> = {
     basic_direction: 'primary',
     spatial_movement: 'info',
-    subject_following: 'success',
+    character_follow: 'success',
     crane_orbit: 'warning',
     emotion_intensify: 'error',
-    transition_connector: 'default',
+    transition: 'default',
   }
   return typeMap[cat] || 'default'
 }
@@ -425,7 +425,7 @@ function getEmotionName(emotion: EmotionTag): string {
     calm: '平静',
     tense: '紧张',
     warm: '温馨',
-    epic: '震撼',
+    shocking: '震撼',
     grand: '宏大',
     mysterious: '神秘',
     immersive: '沉浸',
@@ -453,7 +453,7 @@ function handleInsertKeyword(keyword: string) {
   message.success(`已插入: ${keyword}`)
 }
 
-function showDetail(movement: CameraMovement) {
+function showDetail(movement: CameraMovementOption) {
   currentMovement.value = movement
   showDetailModal.value = true
 }
@@ -463,7 +463,7 @@ function showComboDetail(combo: ShotCombination) {
   showComboModal.value = true
 }
 
-function goToVideoPanel(movement: CameraMovement) {
+function goToVideoPanel(movement: CameraMovementOption) {
   emit('gotoVideo', movement)
   message.info('正在跳转到视频生成面板...')
 }

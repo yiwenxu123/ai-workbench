@@ -61,6 +61,12 @@ export type CameraMovement =
   | 'parallax'
   | 'match_move'
   | 'speed_ramp'
+  | 'dolly_zoom'
+  | 'zoom_in_fast'
+  | 'pan_horizontal'
+  | 'aerial_drone'
+  | 'tracking_shot'
+  | 'low_angle'
 
 export type CameraAngle =
   | 'eye_level'
@@ -120,6 +126,7 @@ export interface CameraAngleOption {
 export interface MovementCategoryMeta {
   id: CameraMovementCategory
   name: string
+  shortName?: string
   description: string
   purpose: string
   icon: string
@@ -1148,11 +1155,11 @@ export const cameraAngles: CameraAngleOption[] = [
 ]
 
 export const movementSpeeds = [
-  { value: 'very_slow', label: '极慢', description: '极其缓慢，适合仪式感、强调' },
-  { value: 'slow', label: '慢', description: '舒缓节奏，适合情绪铺垫' },
-  { value: 'medium', label: '中等', description: '自然节奏，大多数场景适用' },
-  { value: 'fast', label: '快', description: '动感节奏，适合动作场景' },
-  { value: 'very_fast', label: '极快', description: '爆发力，适合冲击和转场' },
+  { id: 'very_slow', keyword: 'very_slow', name: '极慢', nameEn: 'very slow', value: 'very_slow', label: '极慢', description: '极其缓慢，适合仪式感、强调' },
+  { id: 'slow', keyword: 'slow', name: '慢', nameEn: 'slow', value: 'slow', label: '慢', description: '舒缓节奏，适合情绪铺垫' },
+  { id: 'medium', keyword: 'medium', name: '中等', nameEn: 'medium', value: 'medium', label: '中等', description: '自然节奏，大多数场景适用' },
+  { id: 'fast', keyword: 'fast', name: '快', nameEn: 'fast', value: 'fast', label: '快', description: '动感节奏，适合动作场景' },
+  { id: 'very_fast', keyword: 'very_fast', name: '极快', nameEn: 'very fast', value: 'very_fast', label: '极快', description: '爆发力，适合冲击和转场' },
 ] as const
 
 export const emotionTags = [

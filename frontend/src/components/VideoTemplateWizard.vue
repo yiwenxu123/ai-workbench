@@ -189,7 +189,7 @@ const categories = computed(() => {
 
 watch(categories, (cats) => {
   if (cats.length > 0 && !cats.some(c => c.id === selectedCategory.value)) {
-    selectedCategory.value = cats[0].id
+    selectedCategory.value = cats[0]!.id
   }
 }, { immediate: true })
 
@@ -270,13 +270,13 @@ function handleApplyAll() {
       }
     }
     if (shot.shotType) {
-      videoStore.shotType = shot.shotType
+      videoStore.shotType = shot.shotType as ShotType
     }
     if (shot.angle) {
-      videoStore.cameraAngle = shot.angle
+      videoStore.cameraAngle = shot.angle as CameraAngle
     }
     if (shot.speed) {
-      videoStore.movementSpeed = shot.speed
+      videoStore.movementSpeed = shot.speed as MovementSpeed
     }
     if (shot.emotion) {
       videoStore.emotionTag = shot.emotion as EmotionTag

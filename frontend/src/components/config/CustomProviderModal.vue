@@ -120,7 +120,7 @@ function saveCustomProvider() {
     apiKey: customForm.value.apiKey,
     endpoint: customForm.value.endpoint,
     defaultModel: customForm.value.model || undefined,
-    capability: capMap[props.capability]
+    capability: capMap[props.capability] ?? 'image'
   })
 
   message.success(`自定义供应商 ${customForm.value.name} 配置成功！`)

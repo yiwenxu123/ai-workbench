@@ -1,7 +1,7 @@
 export function extractPlaceholders(prompt: string): string[] {
   const keys = new Set<string>()
   for (const match of prompt.matchAll(/\{([^}]+)\}/g)) {
-    keys.add(match[1])
+    keys.add(match[1]!)
   }
   return [...keys]
 }

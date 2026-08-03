@@ -110,8 +110,11 @@ export function getErrorInfo(error: string | null | undefined): ErrorInfo {
 
   // 检查 HTTP 状态码
   const statusMatch = error.match(/\b([45]\d{2})\b/)
-  if (statusMatch && ERROR_MAP[statusMatch[1]]) {
-    return ERROR_MAP[statusMatch[1]]
+  if (statusMatch) {
+    const code = statusMatch[1]!
+    if (ERROR_MAP[code]) {
+      return ERROR_MAP[code]!
+    }
   }
 
   return { title: '生成失败', message: error }

@@ -87,7 +87,6 @@
 import { ref, computed } from 'vue'
 import { useDataStore } from '../../stores'
 import { termCategoryConfig } from '../../config/categories'
-import type { TermCategory } from '../../types/knowledge'
 
 const emit = defineEmits<{
   insert: [keyword: string]

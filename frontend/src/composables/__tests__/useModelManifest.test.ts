@@ -52,7 +52,7 @@ describe('useModelManifest', () => {
     const { getVideoModels } = useModelManifest()
     const models = getVideoModels()
     expect(models.some((m) => m.value === 'kling-v1')).toBe(true)
-    expect(models[0].label).toBe('可灵 V1')
+    expect(models[0]!.label).toBe('可灵 V1')
   })
 
   it('getSupportedSizes filters by manifest', () => {

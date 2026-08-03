@@ -319,13 +319,13 @@ export const useVideoStore = defineStore('video', () => {
     if (fromIndex < 0 || fromIndex >= storyboard.value.length) return
     if (toIndex < 0 || toIndex >= storyboard.value.length) return
     const [shot] = storyboard.value.splice(fromIndex, 1)
-    storyboard.value.splice(toIndex, 0, shot)
+    storyboard.value.splice(toIndex, 0, shot!)
     activeShotIndex.value = toIndex
   }
 
   function updateShot(index: number, updates: Partial<StoryboardShot>) {
     if (index < 0 || index >= storyboard.value.length) return
-    storyboard.value[index] = { ...storyboard.value[index], ...updates }
+    storyboard.value[index] = { ...storyboard.value[index]!, ...updates }
   }
 
   function setActiveShot(index: number) {
@@ -349,7 +349,7 @@ export const useVideoStore = defineStore('video', () => {
   function applyFormToShot(index: number) {
     if (index < 0 || index >= storyboard.value.length) return
     storyboard.value[index] = {
-      ...storyboard.value[index],
+      ...storyboard.value[index]!,
       prompt: prompt.value,
       negativePrompt: negativePrompt.value,
       shotType: shotType.value,

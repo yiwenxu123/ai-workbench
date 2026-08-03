@@ -10,7 +10,7 @@
         <n-dropdown :options="templateOptions" @select="handleApplyTemplate">
           <n-button size="small" quaternary>
             <template #icon>
-              <component :is="Templates" :size="16" />
+              <component :is="LayoutTemplate" :size="16" />
             </template>
             套用模板
           </n-button>
@@ -250,7 +250,7 @@ import {
   Trash2,
   Send,
   Download,
-  Templates,
+  LayoutTemplate,
   Clapperboard,
   RefreshCw,
 } from 'lucide-vue-next'

@@ -13,7 +13,7 @@
           @click="selectedFestival = cat.id as FestivalType"
         >
           <div class="festival-card" :style="{ borderColor: cat.color }">
-            <n-icon :component="getLucideIconComponent(cat.icon)" class="festival-icon" />
+            <n-icon :component="festivalIcons[cat.icon] || Lightbulb" class="festival-icon" />
             <span class="festival-name">{{ cat.name }}</span>
           </div>
         </n-card>
@@ -24,9 +24,9 @@
       <n-collapse-item title="节庆模板" name="festival-templates">
         <n-list bordered>
           <n-list-item v-for="template in selectedFestivalTemplates" :key="template.id">
-            <n-thing :title="template.name" :description="template.description">
+            <n-thing :title="template.title || template.name" :description="template.description">
               <template #avatar>
-                <n-tag :color="{ color: template.colorScheme[0], textColor: '#fff' }" size="small">{{ template.festivalName }}</n-tag>
+                <n-tag :color="{ color: (template.colorScheme || ['#E74C3C'])[0], textColor: '#fff' }" size="small">{{ template.festivalName || (template.tags || ['节日'])[0] }}</n-tag>
               </template>
               <template #action>
                 <n-button size="small" type="primary" @click="applyFestivalTemplate(template)">使用</n-button>
@@ -40,7 +40,7 @@
     <n-modal v-model:show="showModal" preset="card" :title="currentTemplate?.name" style="width: 600px">
       <n-alert type="info" class="mb-3">
         <template #header>配色方案</template>
-        {{ currentTemplate?.colorScheme.join(' / ') }}
+        {{ (currentTemplate?.colorScheme || []).join(' / ') }}
       </n-alert>
       <n-form label-placement="left" label-width="80">
         <n-form-item label="品牌名"><n-input v-model:value="formValues.brandName" placeholder="输入品牌名称" /></n-form-item>
@@ -63,10 +63,13 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import type { Component } from 'vue'
 import { useMessage } from 'naive-ui'
 import { useGeneratorStore, useDataStore } from '../../stores'
-import { Lightbulb } from 'lucide-vue-next'
-import { getLucideIconComponent } from '../../utils/icons'
+import { Lightbulb, Gift, Lamp, Sparkles, Moon, Flag, ShoppingCart, TreePine } from 'lucide-vue-next'
+import type { UnifiedTemplate } from '../../types/api'
+
+const festivalIcons: Record<string, Component> = { Gift, Lantern: Lamp, Sparkles, Moon, Flag, ShoppingCart, TreePine }
 
 const emit = defineEmits<{ select: [prompt: string] }>()
 const message = useMessage()
@@ -74,11 +77,6 @@ const generatorStore = useGeneratorStore()
 const dataStore = useDataStore()
 
 type FestivalType = 'spring_festival' | 'lantern' | 'qingming' | 'labor' | 'dragon_boat' | 'mid_autumn' | 'national' | 'double_11' | 'christmas' | 'new_year'
-
-interface FestivalTemplate {
-  id: string; name: string; festival: FestivalType; festivalName: string; description: string
-  promptTemplate: string; negativePrompt: string; tips: string[]; tags: string[]; colorScheme: string[]; elements: string[]
-}
 
 const festivalDefs = [
   { id: 'spring_festival', name: '春节', icon: 'Gift', color: '#E74C3C' },
@@ -106,16 +104,16 @@ function getCurrentFestival(): FestivalType | null {
 
 const selectedFestival = ref<FestivalType>(getCurrentFestival() || 'spring_festival')
 const showModal = ref(false)
-const currentTemplate = ref<FestivalTemplate | null>(null)
+const currentTemplate = ref<UnifiedTemplate | null>(null)
 const formValues = ref({ brandName: '', slogan: '', product: '' })
 
 const festivalCategories = computed(() => {
-  const festivals = new Set((dataStore.festivalTemplates || []).map((t: any) => t.festival))
+  const festivals = new Set((dataStore.festivalTemplates || []).map((t) => t.festival))
   return festivalDefs.filter(c => festivals.has(c.id))
 })
 
 const selectedFestivalTemplates = computed(() =>
-  (dataStore.festivalTemplates || []).filter((t: any) => t.festival === selectedFestival.value)
+  (dataStore.festivalTemplates || []).filter((t) => t.festival === selectedFestival.value)
 )
 
 const currentFestivalName = computed(() => {
@@ -137,7 +135,7 @@ const generatedPrompt = computed(() => {
   return prompt
 })
 
-function applyFestivalTemplate(template: FestivalTemplate) {
+function applyFestivalTemplate(template: UnifiedTemplate) {
   currentTemplate.value = template
   formValues.value = { brandName: '', slogan: '', product: '' }
   showModal.value = true

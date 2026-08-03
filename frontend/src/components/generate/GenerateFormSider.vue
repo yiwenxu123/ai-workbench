@@ -225,7 +225,7 @@ import {
   NCollapse, NCollapseItem, NCollapseTransition, NTag, NSpace, NText,
 } from 'naive-ui'
 import { Settings, Sparkles, Zap, ChevronDown, ChevronUp, AlertCircle } from 'lucide-vue-next'
-import { useConfigStore, useGeneratorStore, useProviderStore } from '../../stores'
+import { useConfigStore, useGeneratorStore } from '../../stores'
 import { useCapabilityReady } from '../../composables/useCapabilityReady'
 import PromptAnalyzer from '../learn/PromptAnalyzer.vue'
 import PromptOptimizer from '../PromptOptimizer.vue'
@@ -250,7 +250,6 @@ const emit = defineEmits<{
 
 const configStore = useConfigStore()
 const generatorStore = useGeneratorStore()
-const providerStore = useProviderStore()
 const { canUseImage } = useCapabilityReady()
 
 const {

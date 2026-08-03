@@ -63,13 +63,13 @@
         <div class="learning-tags">
           <n-tag
             v-for="item in learningItems"
-            :key="item.id || item.name"
+            :key="item.id || item.title"
             size="small"
             :bordered="false"
             style="cursor: pointer"
             @click="insertLearningTerm(item)"
           >
-            {{ item.content || item.title || item.name }}
+            {{ item.content || item.title }}
           </n-tag>
         </div>
       </div>

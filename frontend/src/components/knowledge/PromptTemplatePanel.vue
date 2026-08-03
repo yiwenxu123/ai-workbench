@@ -163,7 +163,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 const templateCategories = computed(() => {
   const cats = new Set<string>()
   for (const t of dataStore.templates || []) {
-    if (t.category) cats.add(t.category)
+    if (t.taskType) cats.add(t.taskType)
   }
   return Array.from(cats).map(c => ({
     value: c,

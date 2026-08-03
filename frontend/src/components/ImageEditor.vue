@@ -191,7 +191,7 @@ import {
   NModal, NScrollbar, NGrid, NGi, useMessage
 } from 'naive-ui'
 import { CloseOutline } from '@vicons/ionicons5'
-import { useConfigStore, useHistoryStore, useEditorStore, useProviderStore } from '../stores'
+import { useConfigStore, useHistoryStore, useEditorStore } from '../stores'
 import { apiService } from '../api'
 import { useCapabilityReady } from '../composables/useCapabilityReady'
 import MaskCanvas from './MaskCanvas.vue'
@@ -203,7 +203,6 @@ const message = useMessage()
 const configStore = useConfigStore()
 const historyStore = useHistoryStore()
 const editorStore = useEditorStore()
-const providerStore = useProviderStore()
 const { canUseEdit, getProviderCredentials } = useCapabilityReady()
 
 const activeTab = ref('instruction')

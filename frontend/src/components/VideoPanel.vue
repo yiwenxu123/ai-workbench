@@ -367,7 +367,6 @@ import { CloseOutline } from '@vicons/ionicons5'
 import { Film, AlertCircle, Clapperboard, Settings } from 'lucide-vue-next'
 import { useVideoStore } from '../stores/video'
 import { useConfigStore } from '../stores/config'
-import { useProviderStore } from '../stores/provider'
 import {
   shotTypes,
   cameraAngles,
@@ -390,7 +389,6 @@ import type { UploadCustomRequestOptions } from 'naive-ui'
 const message = useMessage()
 const videoStore = useVideoStore()
 const configStore = useConfigStore()
-const providerStore = useProviderStore()
 const { canUseVideo } = useCapabilityReady()
 const { getVideoModels, getModel, verificationLabel } = useModelManifest()
 
@@ -457,10 +455,10 @@ watch(() => videoStore.model, (newModel) => {
   const resolutions = manifest?.resolutions
 
   if (durations?.length && !durations.includes(videoStore.duration)) {
-    videoStore.duration = durations[0]
+    videoStore.duration = durations[0]!
   }
   if (resolutions?.length && !resolutions.includes(videoStore.resolution)) {
-    videoStore.resolution = resolutions[0]
+    videoStore.resolution = resolutions[0]!
   }
 })
 

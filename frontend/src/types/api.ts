@@ -98,6 +98,11 @@ export interface UnifiedTemplate {
   recommendedResolution?: string
   tips?: string[]
   tags?: string[]
+  name?: string
+  festival?: string
+  festivalName?: string
+  colorScheme?: string[]
+  elements?: string[]
 }
 
 /** 知识条目（统一模型，覆盖术语/公式/案例/行业知识/负面词包/模板） */
