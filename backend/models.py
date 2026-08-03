@@ -186,7 +186,7 @@ class OptimizePromptRequest(BaseModel):
 
 class KnowledgeEntry(BaseModel):
     id: str = ""
-    type: Literal["term", "formula", "case", "industry", "negative_pack", "template"] = "term"
+    type: Literal["term", "formula", "case", "industry", "negative_pack", "template", "shot_language"] = "term"
     title: str = ""
     content: str = ""
     tags: list[str] = []

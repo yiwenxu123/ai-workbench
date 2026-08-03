@@ -201,3 +201,38 @@ class TestKnowledgeExportAPI:
     def test_export_invalid_format(self, client):
         resp = client.get("/api/knowledge/export?format=xml")
         assert resp.status_code == 422
+
+
+class TestShotLanguageSearch:
+    def test_search_hitting_shot_language_no_500(self, client):
+        from knowledge_db import knowledge_upsert
+        knowledge_upsert({
+            "id": "shot-slow-push",
+            "type": "shot_language",
+            "title": "慢推镜头 Slow Push",
+            "content": "镜头缓慢靠近主体，营造高级感和仪式感",
+            "category": "emotion_intensify",
+            "tags": ["运镜", "慢推"],
+            "quality": 1.0,
+        })
+        resp = client.post("/api/knowledge/search", json={"query": "人像摄影 高级感", "limit": 5})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        types = {e["type"] for e in data["items"]}
+        assert "shot_language" in types
+
+    def test_search_shot_language_term(self, client):
+        from knowledge_db import knowledge_upsert
+        knowledge_upsert({
+            "id": "shot-static",
+            "type": "shot_language",
+            "title": "固定机位 Static",
+            "content": "固定机位、无运动的镜头，画面稳定",
+            "category": "basic_direction",
+            "tags": ["运镜", "固定"],
+            "quality": 1.0,
+        })
+        resp = client.post("/api/knowledge/search", json={"query": "运镜", "limit": 5})
+        assert resp.status_code == 200
+        assert any(e["type"] == "shot_language" for e in resp.json()["items"])
