@@ -7,7 +7,8 @@ import re
 import time
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
+from fastapi.responses import PlainTextResponse
 from knowledge_db import (
     knowledge_list_all, knowledge_search, knowledge_upsert,
     templates_list_all, templates_list_by_task,
@@ -119,6 +120,57 @@ async def get_knowledge():
 @router.get("/api/knowledge/terms", summary="获取术语词典")
 async def get_knowledge_terms():
     return [e for e in knowledge_list_all() if e.get("type") == "term"]
+
+
+@router.get("/api/knowledge/export", summary="导出知识库（JSON 或 Obsidian 兼容 Markdown）")
+async def export_knowledge(
+    format: str = Query(default="json", pattern="^(json|markdown)$", description="导出格式"),
+    type_filter: str = Query(default="", description="按类型过滤，逗号分隔：term,formula,case,industry,negative_pack,template"),
+):
+    entries = knowledge_list_all()
+    if type_filter:
+        allowed = {t.strip() for t in type_filter.split(",") if t.strip()}
+        entries = [e for e in entries if e.get("type") in allowed]
+
+    if format == "json":
+        return {"total": len(entries), "exportedAt": time.strftime("%Y-%m-%dT%H:%M:%S"), "entries": entries}
+
+    # Obsidian 兼容 Markdown：每类一个 frontmatter + 正文
+    md_lines = ["# AI 绘图知识库导出", "", f"> 导出时间：{time.strftime('%Y-%m-%d %H:%M:%S')} ｜ 共 {len(entries)} 条", ""]
+    by_type: dict[str, list[dict]] = {}
+    for e in entries:
+        by_type.setdefault(e.get("type", "other"), []).append(e)
+
+    for etype, items in by_type.items():
+        md_lines.append(f"## {etype}（{len(items)}）")
+        md_lines.append("")
+        for item in items:
+            title = item.get("title") or item.get("content", "")[:30]
+            md_lines.append(f"### {title}")
+            md_lines.append(f"- 类型：{etype} ｜ 分类：{item.get('category', '')} ｜ 质量：{item.get('quality', '')}")
+            if item.get("tags"):
+                md_lines.append(f"- 标签：{'、'.join(item['tags'])}")
+            if item.get("relatedTerms"):
+                md_lines.append(f"- 关联术语：{', '.join(item['relatedTerms'])}")
+            md_lines.append("")
+            md_lines.append((item.get("content") or "").strip())
+            md_lines.append("")
+            if item.get("prompt"):
+                md_lines.append("```text")
+                md_lines.append(item["prompt"])
+                md_lines.append("```")
+                md_lines.append("")
+            if item.get("examples"):
+                md_lines.append("**示例**")
+                md_lines.append("")
+                for ex in item.get("examples", []):
+                    md_lines.append(f"- {ex}")
+                md_lines.append("")
+        md_lines.append("---")
+        md_lines.append("")
+
+    body = "\n".join(md_lines)
+    return PlainTextResponse(body, media_type="text/markdown; charset=utf-8")
 
 
 @router.get("/api/knowledge/formulas", summary="获取提示词公式库")

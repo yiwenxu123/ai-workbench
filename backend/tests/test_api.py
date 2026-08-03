@@ -162,3 +162,42 @@ class TestModelManifestAPI:
         }
         assert "kling-v1" in video_ids
         assert "jimeng-v1" in video_ids
+
+
+class TestKnowledgeExportAPI:
+    def test_export_json(self, client, sample_knowledge):
+        from knowledge_db import knowledge_upsert
+        for item in sample_knowledge:
+            knowledge_upsert(item)
+        resp = client.get("/api/knowledge/export?format=json")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == len(sample_knowledge)
+        assert data["entries"]
+        assert "id" in data["entries"][0]
+
+    def test_export_json_type_filter(self, client, sample_knowledge):
+        from knowledge_db import knowledge_upsert
+        for item in sample_knowledge:
+            knowledge_upsert(item)
+        resp = client.get("/api/knowledge/export?format=json&type_filter=term,formula")
+        assert resp.status_code == 200
+        types = {e["type"] for e in resp.json()["entries"]}
+        assert types.issubset({"term", "formula"})
+        assert resp.json()["total"] == 3
+
+    def test_export_markdown_obsidian_compatible(self, client, sample_knowledge):
+        from knowledge_db import knowledge_upsert
+        for item in sample_knowledge:
+            knowledge_upsert(item)
+        resp = client.get("/api/knowledge/export?format=markdown")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/markdown")
+        body = resp.text
+        assert body.startswith("# AI 绘图知识库导出")
+        assert "## term" in body
+        assert "共 3 条" in body
+
+    def test_export_invalid_format(self, client):
+        resp = client.get("/api/knowledge/export?format=xml")
+        assert resp.status_code == 422
