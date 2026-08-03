@@ -10,6 +10,7 @@
  */
 
 import assert from 'node:assert'
+import fs from 'node:fs'
 
 const tests = []
 
@@ -181,6 +182,27 @@ const tools = [
     },
   },
   {
+    name: 'compose_workflow',
+    description: '组合工作流：一步完成「知识检索 → 提示词优化 → 图像生成 → 存案例」闭环。Agent 只需一句话需求。LLM 配置可选，未配置时跳过优化步骤直接用原始需求生成。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        need: { type: 'string', description: '一句话创作需求，如「白色保温杯电商主图」' },
+        scene: { type: 'string', enum: ['product', 'marketing', 'presentation', 'portrait', 'illustration', 'general'], default: 'general' },
+        modelType: { type: 'string', description: '目标图像模型ID，如 doubao-seedream-4-5-251128' },
+        size: { type: 'string', default: '1024x1024' },
+        n: { type: 'number', default: 1 },
+        save_case: { type: 'boolean', default: false, description: '是否把生成结果保存到案例库' },
+        api_key: { type: 'string', description: '可选：图像 API 密钥（默认用后端配置）' },
+        api_endpoint: { type: 'string', description: '可选：图像 API 端点' },
+        llm_endpoint: { type: 'string', description: '可选：LLM API端点（配置后启用提示词优化）' },
+        llm_api_key: { type: 'string', description: '可选：LLM API密钥' },
+        llm_model: { type: 'string', default: 'deepseek-chat' },
+      },
+      required: ['need'],
+    },
+  },
+  {
     name: 'evaluate_knowledge',
     description: '评估一条知识条目的质量，从专业性、实用性、创新性、详细度四个维度打分。',
     inputSchema: {
@@ -243,8 +265,19 @@ const prompts = [
 // ========== 测试用例 ==========
 
 // 工具数量测试
-test('应注册 13 个工具', () => {
-  assert.strictEqual(tools.length, 13)
+test('应注册 14 个工具', () => {
+  assert.strictEqual(tools.length, 14)
+})
+
+// 与 index.js 注册的工具名保持同步（防副本脱节）
+test('工具名与 index.js 注册保持一致', () => {
+  const src = fs.readFileSync(new URL('./index.js', import.meta.url), 'utf8')
+  const m = src.match(/const tools = \[([\s\S]*?)\n\];/)
+  assert.ok(m, 'index.js 未找到 tools 数组')
+  const names = (m[1].match(/name: "([^"]+)"/gm) || [])
+    .map((s) => s.replace(/name: "/, '').replace('"', '').trim())
+  const testNames = tools.map((t) => t.name)
+  assert.deepStrictEqual([...names].sort(), [...testNames].sort())
 })
 
 // 所有工具必须有 name

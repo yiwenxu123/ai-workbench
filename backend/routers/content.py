@@ -255,6 +255,29 @@ async def deduplicate_knowledge(request: DeduplicateKnowledgeRequest):
 
 # ── Prompt Optimization ────────────────────────────────────────────────
 
+_LLM_ERROR_HINTS = (
+    ("arrearage", "账户欠费或状态异常，请检查账户余额"),
+    ("overdue", "账户欠费或状态异常，请检查账户余额"),
+    ("invalidapikey", "API 密钥无效或已过期"),
+    ("unauthorized", "API 密钥无效或已过期"),
+    ("authentication", "认证失败，请检查 API 密钥"),
+    ("modelnotfound", "模型不存在或当前账户无权访问"),
+    ("permission", "无权限访问该模型"),
+    ("throttling", "请求频率过高，请稍后再试"),
+    ("rate limit", "请求频率过高，请稍后再试"),
+    ("insufficient", "账户余额不足"),
+    ("invalidparam", "请求参数有误，请检查提示词与模型参数"),
+)
+
+
+def _friendly_llm_error(message: str, code: str = "") -> str:
+    """将 LLM 提供商错误映射为中文友好提示"""
+    combined = f"{code} {message}".lower()
+    for keyword, hint in _LLM_ERROR_HINTS:
+        if keyword in combined:
+            return hint
+    return message[:200] or f"HTTP 错误 (code={code})"
+
 
 @router.post("/api/optimize-prompt", summary="知识增强型提示词优化 (Skill)", tags=["Skills"], operation_id="optimizePrompt")
 async def optimize_prompt(request: OptimizePromptRequest):
@@ -374,9 +397,28 @@ async def optimize_prompt(request: OptimizePromptRequest):
                 "knowledgeRefs": top_kb[:6],
             }
 
-        return {"success": False, "error": "无法解析 LLM 输出"}
+        return {"success": False, "error": "无法解析 LLM 输出", "knowledgeRefs": top_kb[:6]}
+    except httpx.HTTPStatusError as e:
+        code = ""
+        message = e.response.text[:300]
+        try:
+            body = e.response.json()
+            err = body.get("error", {})
+            message = err.get("message", "") or message
+            code = err.get("code", "")
+        except Exception:
+            pass
+        return {
+            "success": False,
+            "error": f"LLM 调用失败: {_friendly_llm_error(message, code)}",
+            "knowledgeRefs": top_kb[:6],
+        }
     except Exception as e:
-        return {"success": False, "error": f"优化失败: {str(e)}"}
+        return {
+            "success": False,
+            "error": f"优化失败: {str(e)}",
+            "knowledgeRefs": top_kb[:6],
+        }
 
 
 # ── Embedding 管理 ────────────────────────────────────────────────────

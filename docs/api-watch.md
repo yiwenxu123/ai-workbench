@@ -15,7 +15,14 @@
 
 ## 2026-08-03
 
-- **豆包/通义图像** (image): ❌ HTTP - — 连接超时（网络波动，复测 200 ✅）
+### 发现: DashScope 账户欠费
+- 现象: 图像生成与 LLM 调用均返回 Arrearage，旧代码误报为"请求参数有误"
+- 处理: 已修复错误映射（humanize_provider_error），提示"账户欠费"；**需充值后复测**
+- 另: multimodal-generation 端点 default 模型映射修正为 qwen-image-2.0-pro（原误映射 wanx-v1）
+
+## 2026-08-03 (巡检)
+
+- **豆包/通义图像** (image): ✅ HTTP 200 — 端点可达 + 认证通过（实际生成受账户欠费限制）
 - **可灵** (video): ⚠️ HTTP - — 未配置 (backend/.env 缺少密钥或端点)
 - **即梦** (video): ⚠️ HTTP - — 未配置 (backend/.env 缺少密钥或端点)
 - **Runway** (video): ⚠️ HTTP - — 未配置 (backend/.env 缺少密钥或端点)

@@ -2,6 +2,7 @@
 图像/视频生成、图片编辑路由
 """
 from datetime import date, datetime
+import json
 from typing import Union
 
 import httpx
@@ -30,7 +31,8 @@ from models import (
 from providers import get_adapter
 from utils import (
     build_payload, detect_default_model, detect_endpoint_type,
-    extract_result_url, humanize_api_error, infer_model_provider,
+    extract_result_url, humanize_api_error, humanize_provider_error,
+    infer_model_provider,
     infer_model_scenarios, validate_size_for_model,
 )
 
@@ -182,7 +184,8 @@ async def generate_image(request: GenerateRequest):
 
         if status_code != 200:
             provider = detect_endpoint_type(api_endpoint)
-            return GenerateResponse(success=False, error=humanize_api_error(status_code, provider))
+            body = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
+            return GenerateResponse(success=False, error=humanize_provider_error(status_code, body, provider))
 
         if status_code == 200:
             if _is_aliyun_response(result):
@@ -225,7 +228,8 @@ async def generate_video(request: VideoGenerateRequest):
         status_code, result = await _call_api(api_key, api_endpoint, payload, timeout=300.0)
 
         if status_code not in [200, 201]:
-            return VideoGenerateResponse(success=False, error=humanize_api_error(status_code, request.model))
+            body = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
+            return VideoGenerateResponse(success=False, error=humanize_provider_error(status_code, body, request.model))
 
         task_id = (result.get("task_id") or result.get("id") or
                    (result.get("data") or {}).get("task_id"))
@@ -307,7 +311,8 @@ async def edit_image(request: ImageEditRequest):
             response = await client.post(api_endpoint, json=payload, headers=headers)
 
             if response.status_code not in [200, 201]:
-                return ImageEditResponse(success=False, error=humanize_api_error(response.status_code, '阿里云万相编辑'))
+                return ImageEditResponse(success=False, error=humanize_provider_error(
+                    response.status_code, response.text[:300], '阿里云万相编辑'))
 
             result = response.json()
             if "output" in result and "results" in result["output"]:

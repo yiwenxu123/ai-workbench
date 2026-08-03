@@ -5,6 +5,7 @@ from models import GenerateRequest
 from utils import (
     build_payload, detect_endpoint_type, normalize_size,
     validate_size_for_model, extract_result_url,
+    detect_default_model, humanize_provider_error,
 )
 from routers.generation import (
     _is_aliyun_response, _extract_aliyun_urls,
@@ -238,3 +239,41 @@ class TestExtractResultUrl:
 
     def test_empty_dict(self):
         assert extract_result_url({}) is None
+
+
+class TestDetectDefaultModel:
+    def test_multimodal_generation_endpoint(self):
+        """multimodal-generation 端点应映射到 qwen-image-2.0-pro（与 validate-api 一致）"""
+        ep = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+        assert detect_default_model(ep) == "qwen-image-2.0-pro"
+
+    def test_compatible_mode_endpoint(self):
+        ep = "https://dashscope.aliyuncs.com/compatible-mode/v1/images/generations"
+        assert detect_default_model(ep) == "qwen-image-plus"
+
+    def test_native_aliyun_endpoint(self):
+        ep = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
+        assert detect_default_model(ep) == "wanx-v1"
+
+    def test_volces_endpoint(self):
+        assert detect_default_model("https://ark.cn-beijing.volces.com/api/v3") == "doubao-seedream-4-5-251128"
+
+    def test_zhipu_endpoint(self):
+        assert detect_default_model("https://open.bigmodel.cn/api/paas/v4") == "cogview-3-flash"
+
+
+class TestHumanizeProviderError:
+    def test_arrearage_detected(self):
+        body = '{"code":"Arrearage","message":"Access denied, please make sure your account is in good standing"}'
+        assert "欠费" in humanize_provider_error(400, body)
+
+    def test_model_not_exist_detected(self):
+        body = '{"code":"InvalidParameter","message":"Model not exist."}'
+        assert "已下线" in humanize_provider_error(400, body)
+
+    def test_invalid_key_detected(self):
+        body = '{"error":{"message":"Invalid API key"}}'
+        assert "密钥" in humanize_provider_error(401, body)
+
+    def test_fallback_to_status_code(self):
+        assert humanize_provider_error(503, "upstream down") == "API 服务维护中，请稍后重试"

@@ -174,6 +174,27 @@ const tools = [
     },
   },
   {
+    name: "compose_workflow",
+    description: "组合工作流：一步完成「知识检索 → 提示词优化 → 图像生成 → 存案例」闭环。Agent 只需一句话需求。LLM 配置可选，未配置时跳过优化步骤直接用原始需求生成。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        need: { type: "string", description: "一句话创作需求，如「白色保温杯电商主图」" },
+        scene: { type: "string", enum: ["product", "marketing", "presentation", "portrait", "illustration", "general"], default: "general" },
+        modelType: { type: "string", description: "目标图像模型ID，如 doubao-seedream-4-5-251128" },
+        size: { type: "string", default: "1024x1024" },
+        n: { type: "number", default: 1 },
+        save_case: { type: "boolean", default: false, description: "是否把生成结果保存到案例库" },
+        api_key: { type: "string", description: "可选：图像 API 密钥（默认用后端配置）" },
+        api_endpoint: { type: "string", description: "可选：图像 API 端点" },
+        llm_endpoint: { type: "string", description: "可选：LLM API端点（配置后启用提示词优化）" },
+        llm_api_key: { type: "string", description: "可选：LLM API密钥" },
+        llm_model: { type: "string", default: "deepseek-chat" },
+      },
+      required: ["need"],
+    },
+  },
+  {
     name: "evaluate_knowledge",
     description: "评估一条知识条目的质量，从专业性、实用性、创新性、详细度四个维度打分。",
     inputSchema: {
@@ -384,6 +405,62 @@ async function callTool(name, args) {
       : [item];
     const replace_ids = operation === "merge" && merge_target_id ? [merge_target_id] : [];
     return post("/api/ingest/save", { target_type: "knowledge", items, replace_ids });
+  }
+  if (name === "compose_workflow") {
+    const { need, scene, modelType, size, n, save_case, api_key, api_endpoint,
+            llm_endpoint, llm_api_key, llm_model } = args;
+    const steps = {};
+
+    // 1. 知识检索（始终执行）
+    steps.knowledge = await post("/api/knowledge/search", {
+      query: need, scene: scene || "general", limit: 3,
+    });
+
+    // 2. 提示词优化（LLM 配置可选）
+    let finalPrompt = need;
+    let finalNegative = "";
+    if (llm_endpoint && llm_api_key) {
+      steps.optimize = await post("/api/optimize-prompt", {
+        prompt: need, scene: scene || "general", modelType: modelType || "",
+        llm_endpoint, llm_api_key, llm_model: llm_model || "deepseek-chat",
+      });
+      if (steps.optimize?.success && steps.optimize.optimizedPrompt) {
+        finalPrompt = steps.optimize.optimizedPrompt;
+        finalNegative = steps.optimize.negativePrompt || "";
+      }
+    }
+
+    // 3. 图像生成
+    const generatePayload = {
+      prompt: finalPrompt,
+      negative_prompt: finalNegative,
+      model: modelType || "default",
+      size: size || "1024x1024",
+      n: n || 1,
+    };
+    if (api_key) generatePayload.api_key = api_key;
+    if (api_endpoint) generatePayload.api_endpoint = api_endpoint;
+    steps.generate = await post("/generate", generatePayload);
+
+    // 4. 存案例（可选）
+    if (save_case && steps.generate?.data?.[0]?.url) {
+      steps.saved = await post("/api/cases", {
+        title: need,
+        prompt: finalPrompt,
+        negativePrompt: finalNegative,
+        model: modelType || "",
+        size: size || "",
+        tips: [],
+        tags: [],
+      });
+    }
+
+    return {
+      workflow: "search → optimize → generate → save",
+      need,
+      optimized: finalPrompt !== need,
+      ...steps,
+    };
   }
   throw new Error(`Unknown tool: ${name}`);
 }

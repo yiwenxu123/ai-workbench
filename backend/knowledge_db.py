@@ -11,6 +11,7 @@ SQLite + FTS5 知识库存储
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import threading
 import time
@@ -374,39 +375,56 @@ def knowledge_search(query: str, scene: str = "general", type_filter: list[str] 
         return results[:limit]
 
 
+def _split_query_terms(query: str) -> list[str]:
+    """将用户查询切分为检索词：按空格与中英文标点切分，过滤单字停用词"""
+    parts = re.split(r"[\s，。、；：！？,.;:!?()（）·]+", query.strip().lower())
+    terms = [p for p in parts if len(p) >= 2]
+    if not terms and len(query.strip()) >= 2:
+        terms = [query.strip().lower()]
+    return terms
+
+
 def _build_fts_query(query: str) -> str:
-    """将用户查询转为 FTS5 查询表达式"""
+    """将用户查询转为 FTS5 查询表达式
+
+    中文无空格分词，先按标点切分为多词，再以 OR 组合，
+    避免整句作为一个 token 导致 FTS5 无命中。
+    """
     query = query.strip().lower()
     if not query:
         return ""
-    parts = [p for p in query.split() if p]
-    if not parts:
+    terms = _split_query_terms(query)
+    if not terms:
         return ""
-    tokens = [f'"{part}"' for part in parts]
+    tokens = [f'"{term}"' for term in terms]
     return " OR ".join(tokens)
 
 
 def _knowledge_like_search(conn: sqlite3.Connection, query: str, scene: str, type_filter: list[str] | None, limit: int) -> list[dict]:
-    """LIKE 回退搜索（支持多词 AND）"""
-    parts = [p.strip() for p in query.split() if p.strip()]
-    if not parts:
+    """LIKE 回退搜索：先全词 AND，无结果时降级为 OR（取前 3 词防噪音）"""
+    terms = _split_query_terms(query)
+    if not terms:
         return []
 
-    conditions = []
-    params: list = []
-    for part in parts:
-        like_pattern = f"%{part}%"
-        conditions.append("(title LIKE ? OR content LIKE ? OR tags LIKE ?)")
-        params.extend([like_pattern, like_pattern, like_pattern])
+    def _build(mode: str, term_slice: list[str]) -> tuple[str, list]:
+        conditions = []
+        params: list = []
+        for term in term_slice:
+            like_pattern = f"%{term}%"
+            conditions.append("(title LIKE ? OR content LIKE ? OR tags LIKE ?)")
+            params.extend([like_pattern, like_pattern, like_pattern])
+        sql = f"SELECT * FROM knowledge WHERE {' AND '.join(conditions) if mode == 'and' else ' OR '.join(conditions)}"
+        if type_filter:
+            placeholders = ",".join("?" for _ in type_filter)
+            sql += f" AND type IN ({placeholders})"
+            params.extend(type_filter)
+        sql += " ORDER BY quality DESC LIMIT ?"
+        params.append(limit)
+        return sql, params
 
-    sql = f"SELECT * FROM knowledge WHERE {' AND '.join(conditions)}"
-    if type_filter:
-        placeholders = ",".join("?" for _ in type_filter)
-        sql += f" AND type IN ({placeholders})"
-        params.extend(type_filter)
-    sql += " ORDER BY quality DESC LIMIT ?"
-    params.append(limit)
-    rows = conn.execute(sql, params).fetchall()
+    rows = conn.execute(*_build("and", terms)).fetchall()
+    if not rows and len(terms) > 1:
+        rows = conn.execute(*_build("or", terms[:3])).fetchall()
     return [_deserialize_knowledge(r) for r in rows]
 
 

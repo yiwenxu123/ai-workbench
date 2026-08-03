@@ -270,6 +270,26 @@ def humanize_api_error(status_code: int, provider: str = "") -> str:
     return friendly.get(status_code, f"API 请求失败（错误码 {status_code}），请稍后重试")
 
 
+def humanize_provider_error(status_code: int, body: str = "", provider: str = "") -> str:
+    """优先解析上游返回的业务错误码，给出准确提示；无法解析时退回状态码映射"""
+    business_hints = (
+        ("arrearage", "账户欠费或状态异常，请检查账户余额"),
+        ("overdue", "账户欠费或状态异常，请检查账户余额"),
+        ("insufficient balance", "账户余额不足，请充值后再试"),
+        ("model not exist", "模型不存在或已下线，请在模型清单中选择可用模型"),
+        ("invalidapikey", "API 密钥无效或已过期，请检查密钥是否正确"),
+        ("throttling", "请求过于频繁，请稍后再试"),
+        ("flowcontrol", "请求过于频繁，请稍后再试"),
+        ("invalidparameter", "请求参数有误，请检查提示词或尺寸设置"),
+        ("request throttled", "请求过于频繁，请稍后再试"),
+    )
+    lowered = body.lower()
+    for keyword, hint in business_hints:
+        if keyword in lowered:
+            return hint
+    return humanize_api_error(status_code, provider)
+
+
 def detect_default_model(endpoint: str) -> str:
     """为 'default' 模型名称返回供应商的默认模型"""
     for keyword, model in [
@@ -280,5 +300,7 @@ def detect_default_model(endpoint: str) -> str:
         if keyword in endpoint:
             return model
     if "aliyuncs.com" in endpoint:
+        if "multimodal-generation" in endpoint:
+            return "qwen-image-2.0-pro"
         return "qwen-image-plus" if "compatible-mode" in endpoint else "wanx-v1"
     return ""

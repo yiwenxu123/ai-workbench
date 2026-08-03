@@ -6,6 +6,7 @@ from knowledge_db import (
     knowledge_list_all, knowledge_get_by_id, knowledge_upsert, knowledge_delete,
     knowledge_search, templates_list_all, templates_upsert,
     cases_list_all, cases_upsert, cases_delete, get_counts,
+    _split_query_terms,
 )
 
 
@@ -96,8 +97,23 @@ class TestFTS5Search:
     def test_no_results(self, sample_knowledge):
         for item in sample_knowledge:
             knowledge_upsert(item)
-        results = knowledge_search("完全不存在的关键词xyz")
+        results = knowledge_search("不存在的关键词xyzzy", limit=5)
         assert len(results) == 0
+
+    def test_chinese_long_sentence_search(self, sample_knowledge):
+        """中文长句（含标点、无空格）必须能命中：切词 + LIKE 回退"""
+        for item in sample_knowledge:
+            knowledge_upsert(item)
+        results = knowledge_search("赛博朋克，霓虹，城市夜景，高级感", limit=5)
+        assert len(results) >= 1
+        assert any("赛博朋克" in r.get("title", "") or "赛博朋克" in r.get("content", "")
+                   for r in results)
+
+    def test_split_query_terms(self):
+        assert _split_query_terms("白色保温杯，女性，高级感") == ["白色保温杯", "女性", "高级感"]
+        assert _split_query_terms("赛博朋克 霓虹 城市") == ["赛博朋克", "霓虹", "城市"]
+        assert _split_query_terms("ai art, 摄影") == ["ai", "art", "摄影"]
+        assert _split_query_terms("的") == []
 
 
 class TestTemplates:
