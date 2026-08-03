@@ -82,6 +82,19 @@ export function useModelManifest() {
       }))
   }
 
+  /** 模型验证状态: true=已验证, false=未验证或已过期 */
+  function isVerified(modelId: string): boolean {
+    return getModel(modelId)?.verified ?? false
+  }
+
+  /** 验证状态标签（用于模型下拉/选择器展示） */
+  function verificationLabel(modelId: string): string {
+    const model = getModel(modelId)
+    if (model?.verified) return ''
+    if (model?.last_verified) return '（未验证）'
+    return '（待验证）'
+  }
+
   return {
     manifest,
     models,
@@ -93,5 +106,7 @@ export function useModelManifest() {
     getModelNote,
     getImageModels,
     getVideoModels,
+    isVerified,
+    verificationLabel,
   }
 }

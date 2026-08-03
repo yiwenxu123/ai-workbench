@@ -24,6 +24,26 @@ RATE_LIMITED_PATHS = frozenset({
     "/api/ingest/save",
 })
 
+# ── Model Verification ────────────────────────────────────────────────
+# 模型经 API 实测验证通过的日期（YYYY-MM-DD）。未记录 = 待验证。
+# 超过 VERIFICATION_MAX_AGE_DAYS 未复测的模型在前端显示"未验证"标记。
+VERIFICATION_MAX_AGE_DAYS = 90
+
+MODEL_LAST_VERIFIED = {
+    'doubao-seedream-4-5-251128': '2026-06-12',
+    'doubao-seedream-4-0-250828': '2026-06-12',
+    'qwen-image-2.0-pro': '2026-06-12',
+    'qwen-image-2.0': '2026-06-12',
+    'qwen-image-plus': '2026-06-12',
+    'qwen-image': '2026-06-12',
+    'cogview-4': '2026-06-12',
+    'cogview-4-plus': '2026-06-12',
+    'cogview-3-flash': '2026-06-12',
+    'cogview-3-plus': '2026-06-12',
+    'wanx-v1': '2026-06-12',
+    'wanx-xl': '2026-06-12',
+}
+
 # ── Provider API Keys (backend-configured, frontend can opt out) ──────
 DEFAULT_API_KEY = os.getenv("API_KEY")
 DEFAULT_API_ENDPOINT = os.getenv("API_ENDPOINT")
@@ -77,6 +97,7 @@ VIDEO_MODEL_MANIFEST = [
         'resolutions': ['720p', '1080p'],
         'recommended_scenarios': ['图生视频', '短视频开场', '产品动态展示'],
         'limitations': '视频生成通常为异步任务，需要轮询任务状态',
+        'last_verified': None,
     },
     {
         'id': 'kling-v1-5',
@@ -87,6 +108,7 @@ VIDEO_MODEL_MANIFEST = [
         'resolutions': ['720p', '1080p'],
         'recommended_scenarios': ['高质量短视频', '产品展示'],
         'limitations': '视频生成通常为异步任务，需要轮询任务状态',
+        'last_verified': None,
     },
     {
         'id': 'jimeng-v1',
@@ -97,6 +119,7 @@ VIDEO_MODEL_MANIFEST = [
         'resolutions': ['720p', '1080p'],
         'recommended_scenarios': ['中文提示词视频', '社媒短视频'],
         'limitations': '异步任务，需轮询状态',
+        'last_verified': None,
     },
     {
         'id': 'runway-gen3',
@@ -107,6 +130,7 @@ VIDEO_MODEL_MANIFEST = [
         'resolutions': ['720p', '1080p', '4k'],
         'recommended_scenarios': ['电影感镜头', '创意广告'],
         'limitations': '异步任务，需轮询状态',
+        'last_verified': None,
     },
 ]
 
@@ -116,6 +140,7 @@ EDIT_MODEL_MANIFEST = {
     'provider': 'aliyun',
     'recommended_scenarios': ['局部重绘', '指令编辑', '扩图'],
     'limitations': '编辑能力依赖源图质量与蒙版质量',
+    'last_verified': None,
 }
 
 MODEL_SIZE_CONFIG = {

@@ -49,7 +49,7 @@ export function useImageGenerationForm() {
   const configStore = useConfigStore()
   const generatorStore = useGeneratorStore()
   const providerStore = useProviderStore()
-  const { manifest, getModel, validateSize, getSupportedSizes, getRecommendedSizes, getModelNote } = useModelManifest()
+  const { manifest, getModel, validateSize, getSupportedSizes, getRecommendedSizes, getModelNote, verificationLabel } = useModelManifest()
 
   const defaultImageProvider = computed(() =>
     providerStore.getDefaultProviderByCapability('image')
@@ -74,8 +74,8 @@ export function useImageGenerationForm() {
       const provider = inferProviderType(m.id)
       return {
         label: provider && PROVIDER_LABELS[provider]
-          ? `${m.name} [${PROVIDER_LABELS[provider]}]`
-          : m.name,
+          ? `${m.name} [${PROVIDER_LABELS[provider]}]${verificationLabel(m.id)}`
+          : `${m.name}${verificationLabel(m.id)}`,
         value: m.id,
         disabled: !isProviderReady(provider),
         provider: provider || undefined,

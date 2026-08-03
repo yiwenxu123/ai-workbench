@@ -1,6 +1,7 @@
 """
 图像/视频生成、图片编辑路由
 """
+from datetime import date, datetime
 from typing import Union
 
 import httpx
@@ -15,7 +16,9 @@ from config import (
     EDIT_MODEL_MANIFEST,
     KLING_API_ENDPOINT, KLING_API_KEY,
     MODEL_DISPLAY_NAMES,
+    MODEL_LAST_VERIFIED,
     MODEL_SIZE_CONFIG,
+    VERIFICATION_MAX_AGE_DAYS,
     VIDEO_MODEL_MANIFEST,
 )
 from models import (
@@ -400,6 +403,18 @@ async def get_model_manifest():
         supported = model_cfg.get("supported_sizes", [])
         return supported[:4] if isinstance(supported, list) else []
 
+    def _verification(model: dict) -> dict:
+        """根据 last_verified 计算 verified 状态"""
+        last = model.get("last_verified") or MODEL_LAST_VERIFIED.get(model.get("id", ""))
+        verified = False
+        if last:
+            try:
+                last_date = datetime.strptime(last, "%Y-%m-%d").date()
+                verified = (date.today() - last_date).days <= VERIFICATION_MAX_AGE_DAYS
+            except ValueError:
+                verified = False
+        return {"last_verified": last, "verified": verified}
+
     image_models = [
         {
             "id": model_id,
@@ -416,6 +431,7 @@ async def get_model_manifest():
             "limitations": model_cfg.get("note"),
             "pricing": "paid",
             "updated_at": updated_at,
+            **_verification({"id": model_id}),
         }
         for model_id, model_cfg in MODEL_SIZE_CONFIG.items()
     ]
@@ -437,6 +453,7 @@ async def get_model_manifest():
             "recommended_scenarios": m.get("recommended_scenarios", []),
             "limitations": m.get("limitations"),
             "updated_at": updated_at,
+            **_verification(m),
         }
         for m in VIDEO_MODEL_MANIFEST
     ]
@@ -452,6 +469,7 @@ async def get_model_manifest():
         "recommended_scenarios": EDIT_MODEL_MANIFEST.get("recommended_scenarios", []),
         "limitations": EDIT_MODEL_MANIFEST.get("limitations"),
         "updated_at": updated_at,
+        **_verification(EDIT_MODEL_MANIFEST),
     }
 
     return {

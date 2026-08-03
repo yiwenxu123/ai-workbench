@@ -1,0 +1,64 @@
+{
+  "kling": {
+    "status_endpoint_template": "{endpoint}/{task_id}",
+    "status_fields": ["task_status", "status"],
+    "status_map": {
+      "submitted": "pending",
+      "processing": "processing",
+      "succeed": "succeed",
+      "failed": "failed"
+    },
+    "default_status": "pending",
+    "result_url_fields": ["result_url", "video_url", "url"],
+    "nested_output_fields": [],
+    "artifact_fields": [],
+    "artifact_url_keys": [],
+    "require_http_prefix": false,
+    "last_verified": "2026-06-12",
+    "notes": "可灵官方接口: 提交返回 task_id, 状态查询 GET {base}/{task_id}"
+  },
+  "jimeng": {
+    "status_endpoint_template": "{endpoint}/{task_id}",
+    "status_fields": ["task_status", "status"],
+    "status_map": {
+      "submitted": "pending",
+      "running": "processing",
+      "processing": "processing",
+      "succeed": "succeed",
+      "suc": "succeed",
+      "failed": "failed",
+      "fail": "failed"
+    },
+    "default_status": "pending",
+    "result_url_fields": ["result_url", "video_url", "url", "output_url", "resource_url"],
+    "nested_output_fields": ["video_url", "url", "result_url"],
+    "artifact_fields": [],
+    "artifact_url_keys": [],
+    "require_http_prefix": false,
+    "last_verified": "2026-06-12",
+    "notes": "即梦任务式接口 (推测): GET {base}/{task_id}"
+  },
+  "runway": {
+    "status_endpoint_template": "{endpoint}/{task_id}",
+    "status_fields": ["task_status", "status"],
+    "status_map": {
+      "submitted": "pending",
+      "queued": "pending",
+      "running": "processing",
+      "processing": "processing",
+      "succeeded": "succeed",
+      "succeed": "succeed",
+      "completed": "succeed",
+      "failed": "failed",
+      "error": "failed"
+    },
+    "default_status": "pending",
+    "result_url_fields": ["result_url", "video_url", "url", "output_url"],
+    "nested_output_fields": ["video_url", "url", "result_url"],
+    "artifact_fields": ["artifacts"],
+    "artifact_url_keys": ["url", "video_url", "src"],
+    "require_http_prefix": true,
+    "last_verified": "2026-06-12",
+    "notes": "Runway RESTful 任务接口 (推测): GET {base}/{task_id}, 结果可能为 artifacts 数组"
+  }
+}

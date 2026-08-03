@@ -2,6 +2,12 @@
 
 import pytest
 from providers import get_adapter, list_providers
+from providers.config_adapter import (
+    ConfigDrivenAdapter,
+    get_provider_config,
+    load_registry,
+    reload_registry,
+)
 from providers.kling_adapter import KlingStatusAdapter
 from providers.jimeng_adapter import JimengStatusAdapter
 from providers.runway_adapter import RunwayStatusAdapter
@@ -203,3 +209,71 @@ class TestRunwayAdapter:
             }
         })
         assert result["result_url"] == "https://example.com/output.mp4"
+
+
+class TestConfigDrivenAdapter:
+    """验证配置驱动特性：行为来自 registry.json，改配置即改行为"""
+
+    def test_registry_contains_all_providers(self):
+        registry = load_registry()
+        for provider in list_providers():
+            assert provider in registry, f"{provider} 缺少 registry 配置"
+
+    def test_all_adapters_are_config_driven(self):
+        for provider in list_providers():
+            assert isinstance(get_adapter(provider), ConfigDrivenAdapter)
+
+    def test_get_provider_config_unknown(self):
+        with pytest.raises(KeyError):
+            get_provider_config("nonexistent")
+
+    def test_status_mapping_from_config(self):
+        """状态映射完全来自 JSON 配置"""
+        cfg = get_provider_config("kling")
+        assert cfg["status_map"]["succeed"] == "succeed"
+        assert cfg["status_map"]["submitted"] == "pending"
+
+    def test_url_template_from_config(self):
+        cfg = get_provider_config("runway")
+        assert cfg["status_endpoint_template"] == "{endpoint}/{task_id}"
+
+    def test_reload_registry_keeps_working(self):
+        """热重载后适配器仍正常"""
+        reload_registry()
+        adapter = get_adapter("kling")
+        assert adapter.parse_response({"data": {"task_status": "succeed"}})["status"] == "succeed"
+
+    def test_custom_provider_from_registry(self):
+        """注册一个自定义 provider 配置，适配器无需代码即可支持"""
+        reload_registry()
+        registry = load_registry()
+        original = dict(registry)
+        try:
+            registry["fakevendor"] = {
+                "status_endpoint_template": "{endpoint}/tasks/{task_id}/status",
+                "status_fields": ["state"],
+                "status_map": {"done": "succeed"},
+                "default_status": "pending",
+                "result_url_fields": ["video"],
+                "nested_output_fields": [],
+                "artifact_fields": [],
+                "artifact_url_keys": [],
+                "require_http_prefix": True,
+            }
+            from providers import _adapters
+            _adapters["fakevendor"] = ConfigDrivenAdapter()
+            _adapters["fakevendor"].provider = "fakevendor"
+
+            adapter = _adapters["fakevendor"]
+            assert adapter.build_status_url("https://api.fake.com/v1", "t-1") == \
+                "https://api.fake.com/v1/tasks/t-1/status"
+            result = adapter.parse_response({"state": "done", "video": "https://x.com/v.mp4"})
+            assert result["status"] == "succeed"
+            assert result["result_url"] == "https://x.com/v.mp4"
+        finally:
+            reload_registry()
+            registry = load_registry()
+            registry.update(original)
+            from providers import _adapters
+            _adapters.pop("fakevendor", None)
+            reload_registry()

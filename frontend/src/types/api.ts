@@ -56,6 +56,8 @@ export interface ModelCapability {
   recommended_scenarios: string[]
   limitations?: string | null
   updated_at: string
+  last_verified?: string | null
+  verified?: boolean
 }
 
 export interface ModelManifest {

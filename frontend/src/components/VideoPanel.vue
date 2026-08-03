@@ -392,7 +392,7 @@ const videoStore = useVideoStore()
 const configStore = useConfigStore()
 const providerStore = useProviderStore()
 const { canUseVideo } = useCapabilityReady()
-const { getVideoModels, getModel } = useModelManifest()
+const { getVideoModels, getModel, verificationLabel } = useModelManifest()
 
 const activeTab = ref('text2video')
 const shotPanelTab = ref('selector')
@@ -416,7 +416,10 @@ const emotionOptions = computed(() =>
 const modelOptions = computed(() => {
   const fromManifest = getVideoModels()
   if (fromManifest.length > 0) {
-    return fromManifest.map((m) => ({ label: m.label, value: m.value }))
+    return fromManifest.map((m) => ({
+      label: `${m.label}${verificationLabel(m.value)}`,
+      value: m.value,
+    }))
   }
   return [
     { label: '可灵 V1', value: 'kling-v1' },
