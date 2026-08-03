@@ -454,7 +454,7 @@ onMounted(() => {
 <style scoped>
 .prompt-optimizer {
   padding: 8px;
-  background: #fafafa;
+  background: var(--bg-subtle);
   border-radius: 8px;
 }
 
@@ -559,7 +559,7 @@ onMounted(() => {
 
 .llm-preset-item {
   padding: 12px;
-  background: #fafafa;
+  background: var(--bg-subtle);
   border-radius: 8px;
   margin-bottom: 8px;
 }

@@ -78,6 +78,11 @@ async def get_unified_templates():
             "title": item.get("title", ""),
             "description": item.get("description", ""),
             "updatedAt": item.get("updatedAt", ""),
+            "shotSettings": item.get("shotSettings"),
+            "recommendedDuration": item.get("recommendedDuration"),
+            "recommendedResolution": item.get("recommendedResolution"),
+            "tips": item.get("tips", []),
+            "tags": item.get("tags", []),
         })
     return unified
 
@@ -119,6 +124,11 @@ async def get_knowledge_formulas():
 @router.get("/api/knowledge/industries", summary="获取行业知识")
 async def get_knowledge_industries():
     return [e for e in knowledge_list_all() if e.get("type") == "industry"]
+
+
+@router.get("/api/knowledge/shot-language", summary="获取镜头语言知识库")
+async def get_knowledge_shot_language():
+    return [e for e in knowledge_list_all() if e.get("type") == "shot_language"]
 
 
 @router.post("/api/knowledge/search", summary="知识库智能检索 (FTS5)")

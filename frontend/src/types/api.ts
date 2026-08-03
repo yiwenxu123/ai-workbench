@@ -69,6 +69,14 @@ export interface ApiError {
   status?: number
 }
 
+export interface TemplateShotSettings {
+  movement?: string
+  shotType?: string
+  angle?: string
+  speed?: string
+  emotion?: string
+}
+
 export interface UnifiedTemplate {
   id: string
   type: 'image' | 'video' | 'edit'
@@ -83,6 +91,11 @@ export interface UnifiedTemplate {
   title: string
   description: string
   updatedAt: string
+  shotSettings?: TemplateShotSettings
+  recommendedDuration?: number
+  recommendedResolution?: string
+  tips?: string[]
+  tags?: string[]
 }
 
 /** 知识条目（统一模型，覆盖术语/公式/案例/行业知识/负面词包/模板） */

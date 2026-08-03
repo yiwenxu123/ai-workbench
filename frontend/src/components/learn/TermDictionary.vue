@@ -327,7 +327,7 @@ function insertTerm() {
 .term-item {
   padding: 10px;
   border-radius: 6px;
-  background: #fafafa;
+  background: var(--bg-subtle);
   margin-bottom: 8px;
   cursor: pointer;
   transition: all 0.2s;

@@ -306,7 +306,7 @@ function applyPrompt() {
 
 .element-item {
   padding: 8px;
-  background: #fafafa;
+  background: var(--bg-subtle);
   border-radius: 4px;
   margin: 4px 0;
 }

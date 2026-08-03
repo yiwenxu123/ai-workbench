@@ -266,7 +266,7 @@ onMounted(() => {
 
 .template-item {
   padding: 12px;
-  background: #fafafa;
+  background: var(--bg-subtle);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;

@@ -8,17 +8,18 @@
         </div>
 
         <div class="panel-sider-scroll">
-        <n-alert
-          v-if="!canUseVideo"
-          type="warning"
-          class="mb-3"
-          :show-icon="false"
-        >
-          <span>请先配置生成视频能力</span>
-          <n-button text type="primary" @click="configStore.showConfigModal = true">
+        <div v-if="!canUseVideo" class="status-banner mb-3" role="status">
+          <div class="status-banner__icon">
+            <n-icon :component="AlertCircle" size="16" />
+          </div>
+          <div class="status-banner__content">
+            <div class="font-semibold">请先配置生成视频能力</div>
+            <div class="text-xs mt-1" style="opacity: 0.85">配置视频生成供应商以解锁文生视频/图生视频</div>
+          </div>
+          <n-button class="status-banner__action" type="primary" size="small" @click="configStore.showConfigModal = true">
             立即配置
           </n-button>
-        </n-alert>
+        </div>
 
         <n-tabs v-model:value="activeTab" type="line" animated>
         <n-tab-pane name="text2video" tab="文生视频">
@@ -91,40 +92,104 @@
         </n-tab-pane>
       </n-tabs>
 
-      <n-collapse class="mt-3">
+      <n-collapse class="mt-3" :default-expanded-names="['shot']">
         <n-collapse-item name="shot">
           <template #header>
             <n-space align="center" :size="4">
               <n-icon :component="Film" />
               <span>镜头语言</span>
+              <n-tag v-if="videoStore.cameraMovement" size="small" type="primary" round>
+                已选运镜
+              </n-tag>
             </n-space>
           </template>
-          <n-space vertical>
-            <n-form-item label="景别" label-placement="left">
-              <n-select
-                v-model:value="videoStore.shotType"
-                :options="shotTypeOptions"
-                placeholder="选择景别"
-                clearable
-              />
-            </n-form-item>
-            <n-form-item label="运镜" label-placement="left">
-              <n-select
-                v-model:value="videoStore.cameraMovement"
-                :options="movementOptions"
-                placeholder="选择运镜方式"
-                clearable
-              />
-            </n-form-item>
-            <n-form-item label="视角" label-placement="left">
-              <n-select
-                v-model:value="videoStore.cameraAngle"
-                :options="angleOptions"
-                placeholder="选择视角"
-                clearable
-              />
-            </n-form-item>
+          <n-space vertical size="medium">
+            <n-tabs v-model:value="shotPanelTab" type="line" size="small">
+              <n-tab-pane name="selector" tab="手动选择">
+                <MovementSelector
+                  v-model:model-value="videoStore.cameraMovement"
+                  @apply-example="handleApplyExample"
+                />
+              </n-tab-pane>
+              <n-tab-pane name="wizard" tab="智能推荐">
+                <MovementWizard
+                  @apply="handleWizardApply"
+                  @apply-combo="handleApplyCombo"
+                />
+              </n-tab-pane>
+            </n-tabs>
+
+            <n-grid :cols="2" :x-gap="10">
+              <n-gi>
+                <n-form-item label="景别" label-placement="left">
+                  <n-select
+                    v-model:value="videoStore.shotType"
+                    :options="shotTypeOptions"
+                    placeholder="选择景别"
+                    clearable
+                    size="small"
+                  />
+                </n-form-item>
+              </n-gi>
+              <n-gi>
+                <n-form-item label="视角" label-placement="left">
+                  <n-select
+                    v-model:value="videoStore.cameraAngle"
+                    :options="angleOptions"
+                    placeholder="选择视角"
+                    clearable
+                    size="small"
+                  />
+                </n-form-item>
+              </n-gi>
+              <n-gi>
+                <n-form-item label="速度" label-placement="left">
+                  <n-select
+                    v-model:value="videoStore.movementSpeed"
+                    :options="speedOptions"
+                    placeholder="运镜速度"
+                    clearable
+                    size="small"
+                  />
+                </n-form-item>
+              </n-gi>
+              <n-gi>
+                <n-form-item label="情绪" label-placement="left">
+                  <n-select
+                    v-model:value="videoStore.emotionTag"
+                    :options="emotionOptions"
+                    placeholder="情绪氛围"
+                    clearable
+                    size="small"
+                  />
+                </n-form-item>
+              </n-gi>
+            </n-grid>
+
+            <n-alert v-if="videoStore.promptQuality.suggestions.length > 0" type="info" :show-icon="true" size="small">
+              <template #header>提示词建议</template>
+              <ul style="margin: 0; padding-left: 18px; font-size: 12px;">
+                <li v-for="(s, i) in videoStore.promptQuality.suggestions.slice(0, 2)" :key="i">
+                  {{ s }}
+                </li>
+              </ul>
+            </n-alert>
           </n-space>
+        </n-collapse-item>
+      </n-collapse>
+
+      <n-collapse class="mt-3">
+        <n-collapse-item name="storyboard">
+          <template #header>
+            <n-space align="center" :size="4">
+              <n-icon :component="Clapperboard" />
+              <span>分镜脚本</span>
+              <n-tag v-if="videoStore.storyboard.length > 0" size="small" type="success" round>
+                {{ videoStore.storyboard.length }} 镜头
+              </n-tag>
+            </n-space>
+          </template>
+          <ShotStoryboard />
         </n-collapse-item>
       </n-collapse>
 
@@ -205,11 +270,15 @@
         <div v-if="videoStore.lastVideo" class="video-result-container">
           <div class="result-header">
             <span class="result-title">生成结果</span>
+            <span v-if="videoStore.lastGenerateParams?.generateTime" class="result-time">
+              {{ formatTime(videoStore.lastGenerateParams.generateTime) }}
+            </span>
           </div>
         <video
           :src="videoStore.lastVideo"
           controls
           class="result-video"
+          :poster="videoStore.lastThumbnail || undefined"
           @error="handleVideoError"
         />
         <n-space class="mt-2">
@@ -223,30 +292,68 @@
             清空
           </n-button>
         </n-space>
+
+        <n-collapse class="mt-3" :default-expanded-names="[]">
+          <n-collapse-item name="params">
+            <template #header>
+              <n-space align="center" :size="4">
+                <n-icon :component="Settings" />
+                <span>生成参数</span>
+              </n-space>
+            </template>
+            <div v-if="videoStore.lastGenerateParams" class="params-detail">
+              <div class="params-grid">
+                <div class="param-item">
+                  <span class="param-label">模型</span>
+                  <span class="param-value">{{ videoStore.lastGenerateParams.model }}</span>
+                </div>
+                <div class="param-item">
+                  <span class="param-label">时长</span>
+                  <span class="param-value">{{ videoStore.lastGenerateParams.duration }} 秒</span>
+                </div>
+                <div class="param-item">
+                  <span class="param-label">分辨率</span>
+                  <span class="param-value">{{ videoStore.lastGenerateParams.resolution }}</span>
+                </div>
+                <div v-if="videoStore.lastGenerateParams.shotType" class="param-item">
+                  <span class="param-label">景别</span>
+                  <span class="param-value">{{ getShotTypeName(videoStore.lastGenerateParams.shotType) }}</span>
+                </div>
+                <div v-if="videoStore.lastGenerateParams.cameraMovement" class="param-item">
+                  <span class="param-label">运镜</span>
+                  <span class="param-value">{{ getMovementName(videoStore.lastGenerateParams.cameraMovement) }}</span>
+                </div>
+                <div v-if="videoStore.lastGenerateParams.cameraAngle" class="param-item">
+                  <span class="param-label">角度</span>
+                  <span class="param-value">{{ getAngleName(videoStore.lastGenerateParams.cameraAngle) }}</span>
+                </div>
+                <div v-if="videoStore.lastGenerateParams.movementSpeed" class="param-item">
+                  <span class="param-label">速度</span>
+                  <span class="param-value">{{ getSpeedName(videoStore.lastGenerateParams.movementSpeed) }}</span>
+                </div>
+                <div v-if="videoStore.lastGenerateParams.emotionTag" class="param-item">
+                  <span class="param-label">情绪</span>
+                  <span class="param-value">{{ getEmotionLabel(videoStore.lastGenerateParams.emotionTag) }}</span>
+                </div>
+              </div>
+              <div v-if="videoStore.lastGenerateParams.negativePrompt" class="param-section">
+                <span class="param-label">负面提示词</span>
+                <p class="param-text">{{ videoStore.lastGenerateParams.negativePrompt }}</p>
+              </div>
+              <div v-if="videoStore.lastGenerateParams.enhancedPrompt" class="param-section">
+                <span class="param-label">增强后提示词</span>
+                <p class="param-text enhanced">{{ videoStore.lastGenerateParams.enhancedPrompt }}</p>
+              </div>
+            </div>
+          </n-collapse-item>
+        </n-collapse>
       </div>
-        <div v-else class="empty-state">
-          <div class="empty-illustration">
-            <div class="empty-glow"></div>
-            <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
-              <defs>
-                <linearGradient id="videoEmptyGrad" x1="0" y1="0" x2="80" y2="80">
-                  <stop offset="0%" stop-color="#4f7df3" stop-opacity="0.3"/>
-                  <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.15"/>
-                </linearGradient>
-              </defs>
-              <rect x="12" y="24" width="56" height="40" rx="10" stroke="url(#videoEmptyGrad)" stroke-width="1.5" stroke-dasharray="4 4"/>
-              <polygon points="34,36 34,52 48,44" fill="#4f7df3" opacity="0.15"/>
-              <circle cx="24" cy="38" r="3" fill="#8b5cf6" opacity="0.1"/>
-              <circle cx="56" cy="36" r="3" fill="#4f7df3" opacity="0.08"/>
-              <path d="M40 10l-5 10h10l-5 10" stroke="#8b5cf6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.2"/>
-            </svg>
-          </div>
-          <div class="empty-title">准备创作一段视频</div>
-          <div class="empty-hint">选择文生视频或图生视频，输入提示词即可生成</div>
-          <div class="empty-shortcut">
-            <span class="shortcut-key">⌘ ↵</span>
-            <span class="shortcut-label">快速生成</span>
-          </div>
+        <div v-else>
+          <EmptyState
+            title="准备创作一段视频"
+            hint="选择文生视频或图生视频，输入提示词即可生成"
+            :shortcut="{ key: '⌘ ↵', label: '快速生成' }"
+          />
         </div>
       </div> <!-- /panel-content -->
     </div> <!-- /panel-layout -->
@@ -257,15 +364,27 @@
 import { ref, computed, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { CloseOutline } from '@vicons/ionicons5'
-import { Film } from 'lucide-vue-next'
+import { Film, AlertCircle, Clapperboard, Settings } from 'lucide-vue-next'
 import { useVideoStore } from '../stores/video'
 import { useConfigStore } from '../stores/config'
 import { useProviderStore } from '../stores/provider'
-import { shotTypes, cameraMovements, cameraAngles, videoDurations, videoResolutions } from '../data/shotLanguage'
+import {
+  shotTypes,
+  cameraAngles,
+  videoDurations,
+  videoResolutions,
+  movementSpeeds,
+  emotionTags,
+  getCameraMovementById,
+} from '../data/shotLanguage'
 import { useModelManifest } from '../composables/useModelManifest'
 import { useCapabilityReady } from '../composables/useCapabilityReady'
 import { getErrorInfo } from '../utils/errorMessages'
 import VideoTemplateWizard from './VideoTemplateWizard.vue'
+import MovementSelector from './MovementSelector.vue'
+import MovementWizard from './MovementWizard.vue'
+import ShotStoryboard from './ShotStoryboard.vue'
+import EmptyState from './common/EmptyState.vue'
 import type { UploadCustomRequestOptions } from 'naive-ui'
 
 const message = useMessage()
@@ -276,17 +395,22 @@ const { canUseVideo } = useCapabilityReady()
 const { getVideoModels, getModel } = useModelManifest()
 
 const activeTab = ref('text2video')
+const shotPanelTab = ref('selector')
 
 const shotTypeOptions = computed(() =>
   shotTypes.map(s => ({ label: s.name, value: s.id }))
 )
 
-const movementOptions = computed(() =>
-  cameraMovements.map(m => ({ label: m.name, value: m.id }))
-)
-
 const angleOptions = computed(() =>
   cameraAngles.map(a => ({ label: a.name, value: a.id }))
+)
+
+const speedOptions = computed(() =>
+  movementSpeeds.map(s => ({ label: s.label, value: s.value }))
+)
+
+const emotionOptions = computed(() =>
+  emotionTags.map(e => ({ label: e.label, value: e.value }))
 )
 
 const modelOptions = computed(() => {
@@ -366,6 +490,21 @@ function handleApplyTemplate(prompt: string) {
   activeTab.value = 'text2video'
 }
 
+function handleApplyExample(prompt: string) {
+  videoStore.prompt = prompt
+  activeTab.value = 'text2video'
+  message.success('已应用示例提示词')
+}
+
+function handleWizardApply(movement: any) {
+  videoStore.applyMovementWithRecommendedSpeed(movement)
+  message.success('已应用运镜方案')
+}
+
+function handleApplyCombo(comboId: string) {
+  message.info(`场景组合功能即将上线：${comboId}`)
+}
+
 function handleDownload() {
   if (!videoStore.lastVideo) return
   
@@ -386,6 +525,41 @@ async function handleCopyPrompt() {
 
 function handleVideoError() {
   message.error('视频加载失败')
+}
+
+function formatTime(isoString: string): string {
+  const date = new Date(isoString)
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function getShotTypeName(id?: string): string {
+  if (!id) return ''
+  return shotTypes.find((t) => t.id === id)?.name || id
+}
+
+function getMovementName(id?: string): string {
+  if (!id) return ''
+  return getCameraMovementById(id as any)?.name || id
+}
+
+function getAngleName(id?: string): string {
+  if (!id) return ''
+  return cameraAngles.find((a) => a.id === id)?.name || id
+}
+
+function getSpeedName(id?: string): string {
+  if (!id) return ''
+  return movementSpeeds.find((s) => s.value === id)?.label || id
+}
+
+function getEmotionLabel(id?: string): string {
+  if (!id) return ''
+  return emotionTags.find((e) => e.value === id)?.label || id
 }
 </script>
 
@@ -465,22 +639,94 @@ function handleVideoError() {
 
 /* ── 错误卡片 ── */
 .error-card {
-  padding: 12px 14px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: var(--radius-md, 10px);
+  padding: var(--space-3) 14px;
+  background: var(--error-50);
+  border: 1px solid var(--error-100);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
 }
 
 .error-title {
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
-  color: #dc2626;
-  margin-bottom: 4px;
+  color: var(--error-600);
+  margin-bottom: var(--space-1);
 }
 
 .error-message {
+  font-size: var(--font-size-sm);
+  color: var(--error-600);
+  opacity: 0.85;
+  line-height: var(--line-height-base);
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.result-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color-1);
+}
+
+.result-time {
   font-size: 12px;
-  color: #7f1d1d;
+  color: var(--text-color-3);
+}
+
+.params-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.params-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.param-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.param-label {
+  font-size: 12px;
+  color: var(--text-color-3);
+}
+
+.param-value {
+  font-size: 13px;
+  color: var(--text-color-1);
+  font-weight: 500;
+}
+
+.param-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.param-text {
+  font-size: 13px;
+  color: var(--text-color-2);
   line-height: 1.5;
+  margin: 0;
+  word-break: break-all;
+}
+
+.param-text.enhanced {
+  color: var(--primary-color);
+  background: rgba(59, 130, 246, 0.05);
+  padding: 8px;
+  border-radius: 4px;
 }
 </style>

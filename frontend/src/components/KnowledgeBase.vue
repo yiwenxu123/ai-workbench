@@ -26,7 +26,7 @@
             <span>镜头语言</span>
           </n-space>
         </template>
-        <ShotLanguagePanel @insert="handleInsert" />
+        <ShotLanguagePanel @insert="handleInsert" @goto-video="handleGotoVideo" />
       </n-tab-pane>
       <n-tab-pane name="templates">
         <template #tab>
@@ -71,9 +71,11 @@ import NegativePromptPanel from './knowledge/NegativePromptPanel.vue'
 import IndustryKnowledgePanel from './knowledge/IndustryKnowledgePanel.vue'
 import CaseLibraryPanel from './knowledge/CaseLibraryPanel.vue'
 import type { CaseExample } from '../types/knowledge'
+import type { CameraMovement } from '../data/shotLanguage'
 
 const emit = defineEmits<{
   insert: [keyword: string]
+  gotoVideo: [movement?: CameraMovement]
 }>()
 
 const message = useMessage()
@@ -102,6 +104,10 @@ function handleUseCase(caseExample: CaseExample) {
     generatorStore.negativePrompt = caseExample.negativePrompt
   }
   message.success('案例提示词已应用')
+}
+
+function handleGotoVideo(movement?: CameraMovement) {
+  emit('gotoVideo', movement)
 }
 </script>
 

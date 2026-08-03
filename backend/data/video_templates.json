@@ -1,98 +1,398 @@
 [
   {
-    "id": "video-product-showcase",
-    "name": "产品旋转展示",
+    "id": "video-product-rotate",
+    "title": "产品旋转展示",
     "category": "product",
-    "description": "360度产品旋转展示视频",
-    "prompt": "{产品名称}在纯白背景中缓慢360度旋转展示，商业产品摄影灯光，侧光勾勒产品轮廓和材质细节，产品表面反光质感细腻，镜头始终聚焦在产品上，每秒产品旋转15度，4K画质",
+    "audience": "电商运营",
+    "description": "360度产品旋转展示视频，突出产品全貌和细节",
+    "prompt": "{产品名称}在纯白背景中缓慢360度旋转展示，商业产品摄影灯光，侧光勾勒产品轮廓和材质细节，产品表面反光质感细腻，镜头始终聚焦在产品上，4K画质",
     "negativePrompt": "blurry, low quality, watermark, shaking, jumping",
-    "model": "kling-v1",
-    "parameters": {
-      "size": "1080p",
-      "duration": "10秒",
-      "motion": "产品360度旋转"
+    "requiredFields": ["产品名称"],
+    "shotSettings": {
+      "movement": "orbit",
+      "shotType": "full",
+      "angle": "eye_level",
+      "speed": "slow",
+      "emotion": "delicate"
     },
+    "recommendedDuration": 10,
+    "recommendedResolution": "1080p",
     "tips": ["确保初始图片产品居中", "背景干净无干扰", "光照均匀"],
-    "tags": ["电商", "产品", "展示"]
+    "tags": ["电商", "产品", "展示"],
+    "updatedAt": "2024-07-04"
   },
   {
-    "id": "video-social-broll",
-    "name": "社媒氛围短视频",
+    "id": "video-product-detail",
+    "title": "产品细节特写",
+    "category": "product",
+    "audience": "电商运营",
+    "description": "缓慢推进展示产品细节质感，强调高端品质",
+    "prompt": "{产品名称}细节特写镜头，缓慢推进展示材质纹理，产品摄影棚灯光，高光勾勒边缘，景深虚化背景，突出产品高端质感和工艺细节，commercial product photography",
+    "negativePrompt": "blurry, low quality, watermark, shaking, distorted",
+    "requiredFields": ["产品名称"],
+    "shotSettings": {
+      "movement": "slow_push",
+      "shotType": "close_up",
+      "angle": "eye_level",
+      "speed": "very_slow",
+      "emotion": "delicate"
+    },
+    "recommendedDuration": 5,
+    "recommendedResolution": "1080p",
+    "tips": ["初始图片要有清晰的细节", "推进速度要慢", "光线要突出质感"],
+    "tags": ["电商", "产品", "细节"],
+    "updatedAt": "2024-07-04"
+  },
+  {
+    "id": "video-product-lifestyle",
+    "title": "产品场景展示",
+    "category": "product",
+    "audience": "品牌营销",
+    "description": "产品在真实使用场景中的动态展示",
+    "prompt": "{产品名称}在{场景}中使用的场景，自然光线，生活化氛围，镜头缓慢平移跟随产品使用过程，真实感强，lifestyle product photography，warm natural lighting",
+    "negativePrompt": "studio, artificial, posed, fake",
+    "requiredFields": ["产品名称", "场景"],
+    "shotSettings": {
+      "movement": "side_track",
+      "shotType": "medium",
+      "angle": "eye_level",
+      "speed": "slow",
+      "emotion": "warm"
+    },
+    "recommendedDuration": 8,
+    "recommendedResolution": "1080p",
+    "tips": ["场景要自然真实", "光线要生活化", "运镜要平稳"],
+    "tags": ["电商", "产品", "生活方式"],
+    "updatedAt": "2024-07-04"
+  },
+  {
+    "id": "video-social-atmosphere",
+    "title": "社媒氛围短视频",
     "category": "social",
+    "audience": "社媒运营",
     "description": "适合社交媒体发布的氛围感短视频",
     "prompt": "{主题}氛围视频，{风格}风格，镜头缓慢推近/平移，光影柔和温暖，画面质感如电影胶片，色彩分级统一，节奏舒缓，适合社媒传播场景，atmospheric, cinematic, slow motion feeling",
     "negativePrompt": "shaky, fast movement, unprofessional, watermark",
-    "model": "kling-v1",
-    "parameters": {
-      "size": "1080p",
-      "duration": "5秒",
-      "motion": "镜头缓慢推近"
+    "requiredFields": ["主题", "风格"],
+    "shotSettings": {
+      "movement": "slow_push",
+      "shotType": "medium",
+      "angle": "eye_level",
+      "speed": "slow",
+      "emotion": "warm"
     },
+    "recommendedDuration": 5,
+    "recommendedResolution": "1080p",
     "tips": ["初始图片要有呼吸感", "运动幅度不宜过大", "色调统一"],
-    "tags": ["社媒", "氛围", "短视频"]
+    "tags": ["社媒", "氛围", "短视频"],
+    "updatedAt": "2024-07-04"
+  },
+  {
+    "id": "video-social-trending",
+    "title": "社媒爆款转场",
+    "category": "social",
+    "audience": "短视频创作者",
+    "description": "节奏感强的转场效果，适合短视频平台",
+    "prompt": "{主题}动态转场视频，画面从{场景A}快速切换到{场景B}，动作匹配转场，节奏感强，视觉冲击力足，trending transition style, dynamic and energetic",
+    "negativePrompt": "slow, boring, static, no movement",
+    "requiredFields": ["主题", "场景A", "场景B"],
+    "shotSettings": {
+      "movement": "whip_pan",
+      "shotType": "medium",
+      "angle": "eye_level",
+      "speed": "fast",
+      "emotion": "dynamic"
+    },
+    "recommendedDuration": 3,
+    "recommendedResolution": "1080p",
+    "tips": ["两个场景要有动作呼应", "转场速度要快", "适合音乐卡点"],
+    "tags": ["社媒", "转场", "爆款"],
+    "updatedAt": "2024-07-04"
   },
   {
     "id": "video-brand-teaser",
-    "name": "品牌开场视频",
+    "title": "品牌开场视频",
     "category": "brand",
+    "audience": "品牌营销",
     "description": "品牌/产品首发倒计时或开场视频",
     "prompt": "{品牌/主题}品牌开场视频，画面从虚焦快速对焦至核心元素，品牌色调贯穿始终，粒子/光线汇聚动画效果，电影级调色，文字（{文字内容}）浮现于画面下方，高端品牌质感",
     "negativePrompt": "cheap, amateur, low quality, inconsistent color, watermark",
-    "model": "kling-v1",
-    "parameters": {
-      "size": "1080p",
-      "duration": "5秒",
-      "style": "电影级品牌调性"
+    "requiredFields": ["品牌/主题", "文字内容"],
+    "shotSettings": {
+      "movement": "dolly_in",
+      "shotType": "close_up",
+      "angle": "eye_level",
+      "speed": "medium",
+      "emotion": "epic"
     },
+    "recommendedDuration": 5,
+    "recommendedResolution": "1080p",
     "tips": ["品牌色调要贯穿", "动态引导视线至核心元素", "留文字区域"],
-    "tags": ["品牌", "开场", "高端"]
+    "tags": ["品牌", "开场", "高端"],
+    "updatedAt": "2024-07-04"
   },
   {
-    "id": "video-education-animation",
-    "name": "知识解说动画",
+    "id": "video-brand-story",
+    "title": "品牌故事叙事",
+    "category": "brand",
+    "audience": "品牌营销",
+    "description": "娓娓道来的品牌故事感视频",
+    "prompt": "{品牌故事主题}，画面从细节特写缓慢拉远展示完整场景，温暖柔和的自然光，电影感景深，叙事感强，brand storytelling cinematic style, warm and authentic",
+    "negativePrompt": "corporate, sterile, artificial lighting",
+    "requiredFields": ["品牌故事主题"],
+    "shotSettings": {
+      "movement": "dolly_out",
+      "shotType": "extreme_close_up",
+      "angle": "eye_level",
+      "speed": "very_slow",
+      "emotion": "warm"
+    },
+    "recommendedDuration": 8,
+    "recommendedResolution": "1080p",
+    "tips": ["从一个有故事感的细节开始", "拉远速度要慢", "光线要温暖"],
+    "tags": ["品牌", "故事", "叙事"],
+    "updatedAt": "2024-07-04"
+  },
+  {
+    "id": "video-brand-epic",
+    "title": "品牌史诗大片",
+    "category": "brand",
+    "audience": "高端品牌",
+    "description": "宏大叙事的品牌形象片风格",
+    "prompt": "{品牌主题}史诗级品牌形象片，航拍大场景开场，镜头缓慢推进，低角度英雄视角，电影级光影，宏大氛围感，epic brand cinematic, grand and powerful",
+    "negativePrompt": "cheap, small, trivial",
+    "requiredFields": ["品牌主题"],
+    "shotSettings": {
+      "movement": "aerial_drone",
+      "shotType": "extreme_long",
+      "angle": "high_angle",
+      "speed": "slow",
+      "emotion": "grand"
+    },
+    "recommendedDuration": 10,
+    "recommendedResolution": "1080p",
+    "tips": ["开场要有宏大感", "运镜要稳", "光影要有层次"],
+    "tags": ["品牌", "史诗", "大片"],
+    "updatedAt": "2024-07-04"
+  },
+  {
+    "id": "video-education-explain",
+    "title": "知识解说动画",
     "category": "education",
+    "audience": "知识博主",
     "description": "适合知识解说的动态配图",
     "prompt": "{主题}知识解说动画，画面内容与{讲解内容}同步，柔和明亮的色调，信息层级清晰呈现，动态箭头/标注辅助理解，整体风格轻松教育感，educational animation style",
     "negativePrompt": "scary, confusing, overly complex, low quality",
-    "model": "kling-v1",
-    "parameters": {
-      "size": "1080p",
-      "duration": "5秒",
-      "motion": "内容区域动态扩展"
+    "requiredFields": ["主题", "讲解内容"],
+    "shotSettings": {
+      "movement": "slow_pan",
+      "shotType": "medium",
+      "angle": "eye_level",
+      "speed": "slow",
+      "emotion": "calm"
     },
+    "recommendedDuration": 5,
+    "recommendedResolution": "1080p",
     "tips": ["内容简洁聚焦", "色调明亮", "动态辅助理解"],
-    "tags": ["教育", "解说", "动画"]
+    "tags": ["教育", "解说", "动画"],
+    "updatedAt": "2024-07-04"
   },
   {
-    "id": "video-culture-motion",
-    "name": "国风动态画面",
+    "id": "video-education-focus",
+    "title": "重点强调动画",
+    "category": "education",
+    "audience": "讲师/教师",
+    "description": "突出重点内容的强调式动画",
+    "prompt": "{重点内容}强调展示，画面从全局聚焦到重点区域，高亮效果突出关键信息，清晰明了的视觉引导，focus emphasis animation style, clear and direct",
+    "negativePrompt": "distracting, confusing, messy",
+    "requiredFields": ["重点内容"],
+    "shotSettings": {
+      "movement": "dolly_in",
+      "shotType": "close_up",
+      "angle": "eye_level",
+      "speed": "medium",
+      "emotion": "calm"
+    },
+    "recommendedDuration": 3,
+    "recommendedResolution": "1080p",
+    "tips": ["全局到重点要有逻辑", "突出效果要明显", "速度要适中"],
+    "tags": ["教育", "强调", "重点"],
+    "updatedAt": "2024-07-04"
+  },
+  {
+    "id": "video-culture-chinese",
+    "title": "国风动态画面",
     "category": "culture",
+    "audience": "文化内容创作者",
     "description": "国风/传统文化主题动态画面",
     "prompt": "国风动态画面，{元素}在画面中缓慢飘动/流动，水墨质感，留白构图，传统配色（朱红/墨黑/金色），画面富有诗意和东方韵味，motion speed ultra slow, poetic atmosphere",
     "negativePrompt": "fast motion, modern, western style, messy",
-    "model": "kling-v1",
-    "parameters": {
-      "size": "720p",
-      "duration": "5秒",
-      "style": "国风诗意"
+    "requiredFields": ["元素"],
+    "shotSettings": {
+      "movement": "slow_pan",
+      "shotType": "full",
+      "angle": "eye_level",
+      "speed": "very_slow",
+      "emotion": "calm"
     },
+    "recommendedDuration": 5,
+    "recommendedResolution": "720p",
     "tips": ["运动速度要慢", "水墨质感的图效果好", "留白保持呼吸感"],
-    "tags": ["国风", "文化", "动态"]
+    "tags": ["国风", "文化", "动态"],
+    "updatedAt": "2024-07-04"
+  },
+  {
+    "id": "video-culture-reveal",
+    "title": "国风卷轴揭示",
+    "category": "culture",
+    "audience": "文化内容创作者",
+    "description": "画卷展开式的揭示效果，东方美学",
+    "prompt": "国风画卷展开效果，{内容}从中央向两侧缓缓展开，水墨晕染效果，传统卷轴质感，诗意东方美学，scroll reveal animation, traditional Chinese aesthetic",
+    "negativePrompt": "modern, western, fast, 3d",
+    "requiredFields": ["内容"],
+    "shotSettings": {
+      "movement": "reveal_shot",
+      "shotType": "full",
+      "angle": "eye_level",
+      "speed": "very_slow",
+      "emotion": "mysterious"
+    },
+    "recommendedDuration": 6,
+    "recommendedResolution": "1080p",
+    "tips": ["展开速度要慢", "要有水墨质感", "构图要对称"],
+    "tags": ["国风", "卷轴", "揭示"],
+    "updatedAt": "2024-07-04"
   },
   {
     "id": "video-portrait-live",
-    "name": "人像动态开场",
+    "title": "人像动态开场",
     "category": "portrait",
+    "audience": "人像摄影师",
     "description": "人像摄影的动态化效果",
     "prompt": "{人物描述}，自然动态效果，头发/衣物/背景元素轻微飘动，眼神依然聚焦镜头，面部表情自然放松，氛围感光影像呼吸般微微变化，cinematic portrait, subtle motion, natural atmosphere",
     "negativePrompt": "exaggerated motion, unnatural, distorted face",
-    "model": "kling-v1",
-    "parameters": {
-      "size": "1080p",
-      "duration": "3秒",
-      "motion": "细微动态"
+    "requiredFields": ["人物描述"],
+    "shotSettings": {
+      "movement": "static",
+      "shotType": "close_up",
+      "angle": "eye_level",
+      "speed": "very_slow",
+      "emotion": "warm"
     },
+    "recommendedDuration": 3,
+    "recommendedResolution": "1080p",
     "tips": ["运动幅度极微小", "面部不能变形", "背景稍有动感即可"],
-    "tags": ["人像", "动态", "开场"]
+    "tags": ["人像", "动态", "开场"],
+    "updatedAt": "2024-07-04"
+  },
+  {
+    "id": "video-portrait-cinematic",
+    "title": "电影感人像",
+    "category": "portrait",
+    "audience": "视频创作者",
+    "description": "电影级质感的人像短片",
+    "prompt": "{人物描述}，电影级人像短片，浅景深虚化背景，侧逆光勾勒轮廓，镜头缓慢环绕人物，情绪氛围感强，cinematic portrait short film, moody and atmospheric",
+    "negativePrompt": "flat lighting, boring, snapshot style",
+    "requiredFields": ["人物描述"],
+    "shotSettings": {
+      "movement": "orbit",
+      "shotType": "medium",
+      "angle": "eye_level",
+      "speed": "slow",
+      "emotion": "immersive"
+    },
+    "recommendedDuration": 5,
+    "recommendedResolution": "1080p",
+    "tips": ["光线要有层次", "环绕速度要均匀", "背景要简洁"],
+    "tags": ["人像", "电影感", "氛围"],
+    "updatedAt": "2024-07-04"
+  },
+  {
+    "id": "video-vlog-opening",
+    "title": "Vlog开场片头",
+    "category": "vlog",
+    "audience": "Vlog博主",
+    "description": "个人风格强烈的Vlog开场视频",
+    "prompt": "{Vlog主题}Vlog开场，手持跟拍视角，自然真实感，镜头跟随人物进入场景，第一人称代入感强，vlog style opening, authentic and energetic",
+    "negativePrompt": "professional studio, posed, artificial",
+    "requiredFields": ["Vlog主题"],
+    "shotSettings": {
+      "movement": "follow_shot",
+      "shotType": "medium",
+      "angle": "eye_level",
+      "speed": "medium",
+      "emotion": "documentary"
+    },
+    "recommendedDuration": 5,
+    "recommendedResolution": "1080p",
+    "tips": ["要有真实感", "运镜可以有轻微晃动", "光线要自然"],
+    "tags": ["Vlog", "开场", "真实感"],
+    "updatedAt": "2024-07-04"
+  },
+  {
+    "id": "video-food-appetizing",
+    "title": "美食诱人展示",
+    "category": "food",
+    "audience": "美食博主",
+    "description": "勾起食欲的美食动态展示",
+    "prompt": "{美食名称}诱人展示，蒸汽/热气缓缓上升，镜头缓慢环绕展示各个角度，暖色调灯光，食欲感满满，appetizing food showcase, warm and delicious",
+    "negativePrompt": "cold, unappetizing, dark",
+    "requiredFields": ["美食名称"],
+    "shotSettings": {
+      "movement": "orbit",
+      "shotType": "close_up",
+      "angle": "high_angle",
+      "speed": "very_slow",
+      "emotion": "warm"
+    },
+    "recommendedDuration": 5,
+    "recommendedResolution": "1080p",
+    "tips": ["要有热气/蒸汽", "暖色调更有食欲", "环绕要慢而稳"],
+    "tags": ["美食", "诱人", "展示"],
+    "updatedAt": "2024-07-04"
+  },
+  {
+    "id": "video-real-estate-tour",
+    "title": "房产空间漫游",
+    "category": "realestate",
+    "audience": "房产中介/设计师",
+    "description": "室内空间漫游式展示视频",
+    "prompt": "{空间描述}室内空间漫游，镜头平稳推进穿过房间，自然采光，空间层次感强，真实感强，real estate walkthrough, smooth and spacious",
+    "negativePrompt": "shaky, distorted, fisheye",
+    "requiredFields": ["空间描述"],
+    "shotSettings": {
+      "movement": "dolly_in",
+      "shotType": "full",
+      "angle": "eye_level",
+      "speed": "very_slow",
+      "emotion": "calm"
+    },
+    "recommendedDuration": 8,
+    "recommendedResolution": "1080p",
+    "tips": ["运镜要非常稳", "速度要慢", "光线要自然明亮"],
+    "tags": ["房产", "空间", "漫游"],
+    "updatedAt": "2024-07-04"
+  },
+  {
+    "id": "video-festival-greeting",
+    "title": "节日祝福视频",
+    "category": "festival",
+    "audience": "节庆营销",
+    "description": "节日主题祝福视频，喜庆氛围",
+    "prompt": "{节日名称}祝福视频，{节日元素}缓缓飘落/飘动，喜庆节日配色，温暖光影，节日氛围浓厚，festive greeting video, joyful and celebratory",
+    "negativePrompt": "sad, dark, boring",
+    "requiredFields": ["节日名称", "节日元素"],
+    "shotSettings": {
+      "movement": "slow_push",
+      "shotType": "full",
+      "angle": "eye_level",
+      "speed": "slow",
+      "emotion": "warm"
+    },
+    "recommendedDuration": 5,
+    "recommendedResolution": "1080p",
+    "tips": ["节日元素要丰富", "色调要喜庆温暖", "动效要有节日感"],
+    "tags": ["节日", "祝福", "喜庆"],
+    "updatedAt": "2024-07-04"
   }
 ]

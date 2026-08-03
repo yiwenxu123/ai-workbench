@@ -422,7 +422,7 @@ onMounted(() => {
 }
 
 .provider-item {
-  background: #fafafa;
+  background: var(--bg-subtle);
   border-radius: 8px;
   padding: 12px;
   border: 1px solid #e8e8e8;

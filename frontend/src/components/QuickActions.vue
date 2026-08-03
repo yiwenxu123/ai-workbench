@@ -177,9 +177,10 @@ function handleFeedback(value: 'good' | 'bad'): void {
 .quick-actions {
   display: flex;
   justify-content: center;
-  padding: 8px 0;
-  background: #fafafa;
-  border-radius: 8px;
-  margin-top: 8px;
+  padding: var(--space-3) 0;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-3);
 }
 </style>

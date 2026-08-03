@@ -1,117 +1,349 @@
 <template>
   <div class="shot-language-panel">
-    <n-input
-      v-model:value="searchText"
-      placeholder="搜索镜头语言..."
-      clearable
-      size="small"
-      class="mb-2"
-    />
-
-    <n-space class="mb-2">
-      <n-tag
+    <div class="panel-header">
+      <n-input
+        v-model:value="searchText"
+        placeholder="搜索运镜、景别、角度..."
+        clearable
         size="small"
-        :type="selectedCategory === 'all' ? 'primary' : 'default'"
-        @click="selectedCategory = 'all'"
+        class="search-input"
       >
-        全部
-      </n-tag>
-      <n-tag
-        v-for="cat in shotCategories"
-        :key="cat.value"
-        size="small"
-        :type="selectedCategory === cat.value ? 'primary' : 'default'"
-        @click="selectedCategory = cat.value"
-      >
-        {{ cat.icon }} {{ cat.label }}
-      </n-tag>
-    </n-space>
-
-    <n-collapse>
-      <n-collapse-item
-        v-for="shot in filteredShots"
-        :key="shot.id"
-        :name="shot.id"
-      >
-        <template #header>
-          <div class="shot-header">
-            <span class="shot-name">{{ shot.name }}</span>
-            <n-tag size="tiny" type="info">{{ shot.nameEn }}</n-tag>
-          </div>
+        <template #prefix>
+          <n-icon :component="Search" />
         </template>
-        
-        <div class="shot-content">
-          <p class="shot-desc">{{ shot.description }}</p>
-          <p class="shot-usage"><strong>用途：</strong>{{ shot.usage }}</p>
-          
-          <div class="shot-keywords">
-            <span class="label">关键词：</span>
-            <n-tag
-              v-for="keyword in shot.keywords"
-              :key="keyword"
-              size="small"
-              class="keyword-tag"
-              @click="emit('insert', keyword)"
-            >
-              {{ keyword }}
+      </n-input>
+    </div>
+
+    <n-tabs v-model:value="activeCategory" type="line" size="small" class="category-tabs">
+      <n-tab-pane
+        v-for="cat in movementCategories"
+        :key="cat.id"
+        :name="cat.id"
+      >
+        <template #tab>
+          <span class="tab-label">
+            <span class="tab-icon">{{ cat.icon }}</span>
+            <span>{{ cat.shortName || cat.name }}</span>
+          </span>
+        </template>
+      </n-tab-pane>
+      <n-tab-pane name="basics" tab="基础">
+        <template #tab>
+          <span class="tab-label">
+            <span class="tab-icon">📐</span>
+            <span>基础</span>
+          </span>
+        </template>
+      </n-tab-pane>
+      <n-tab-pane name="combos" tab="组合">
+        <template #tab>
+          <span class="tab-label">
+            <span class="tab-icon">🎬</span>
+            <span>组合</span>
+          </span>
+        </template>
+      </n-tab-pane>
+      <n-tab-pane name="quiz" tab="测验">
+        <template #tab>
+          <span class="tab-label">
+            <span class="tab-icon">🧠</span>
+            <span>测验</span>
+          </span>
+        </template>
+      </n-tab-pane>
+    </n-tabs>
+
+    <div class="panel-content">
+      <div v-if="searchText" class="search-results">
+        <div v-if="filteredMovements.length === 0" class="empty-state">
+          <n-empty description="未找到匹配的镜头语言" size="small" />
+        </div>
+        <div
+          v-for="movement in filteredMovements"
+          :key="movement.id"
+          class="movement-card"
+        >
+          <div class="card-header">
+            <div class="card-title">
+              <span class="movement-name">{{ movement.name }}</span>
+              <n-tag size="tiny" type="info">{{ movement.nameEn }}</n-tag>
+              <n-tag v-if="movement.isHighFrequency" size="tiny" type="success">常用</n-tag>
+            </div>
+            <n-tag size="tiny" :type="getCategoryTagType(movement.category)">
+              {{ getCategoryName(movement.category) }}
             </n-tag>
           </div>
+          <p class="card-desc">{{ movement.useCase }}</p>
           
-          <div class="shot-examples">
-            <span class="label">示例：</span>
-            <div
-              v-for="(example, idx) in shot.examples"
-              :key="idx"
-              class="example-item"
-              @click="emit('insert', example)"
-            >
-              {{ example }}
+          <div class="card-section">
+            <span class="section-label">关键词</span>
+            <div class="keyword-list">
+              <n-tag
+                v-for="kw in movement.keywords.slice(0, 3)"
+                :key="kw"
+                size="small"
+                class="keyword-tag"
+                @click="handleInsertKeyword(kw)"
+              >
+                {{ kw }}
+              </n-tag>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <n-button size="tiny" quaternary @click="showDetail(movement)">
+              查看详情
+            </n-button>
+            <n-button size="tiny" type="primary" @click="goToVideoPanel(movement)">
+              去视频生成使用
+            </n-button>
+          </div>
+        </div>
+      </div>
+
+      <template v-else-if="activeCategory === 'basics'">
+        <div class="basics-section">
+          <div class="section-header">
+            <n-icon :component="Ruler" size="16" />
+            <span>景别</span>
+          </div>
+          <n-grid :cols="2" :x-gap="8" :y-gap="8">
+            <n-gi v-for="shot in shotTypes" :key="shot.id">
+              <div class="basic-card" @click="handleInsertKeyword(shot.keywords[0])">
+                <div class="basic-title">{{ shot.name }}</div>
+                <div class="basic-en">{{ shot.nameEn }}</div>
+              </div>
+            </n-gi>
+          </n-grid>
+        </div>
+
+        <div class="basics-section">
+          <div class="section-header">
+            <n-icon :component="Eye" size="16" />
+            <span>拍摄角度</span>
+          </div>
+          <n-grid :cols="2" :x-gap="8" :y-gap="8">
+            <n-gi v-for="angle in cameraAngles" :key="angle.id">
+              <div class="basic-card" @click="handleInsertKeyword(angle.keywords[0])">
+                <div class="basic-title">{{ angle.name }}</div>
+                <div class="basic-en">{{ angle.nameEn }}</div>
+              </div>
+            </n-gi>
+          </n-grid>
+        </div>
+
+        <div class="basics-section">
+          <div class="section-header">
+            <n-icon :component="Gauge" size="16" />
+            <span>运镜速度</span>
+          </div>
+          <n-grid :cols="2" :x-gap="8" :y-gap="8">
+            <n-gi v-for="speed in movementSpeeds" :key="speed.id">
+              <div class="basic-card" @click="handleInsertKeyword(speed.keyword)">
+                <div class="basic-title">{{ speed.name }}</div>
+                <div class="basic-en">{{ speed.nameEn }}</div>
+              </div>
+            </n-gi>
+          </n-grid>
+        </div>
+      </template>
+
+      <template v-else-if="activeCategory === 'combos'">
+        <div class="combo-list">
+          <div
+            v-for="combo in shotCombinations"
+            :key="combo.id"
+            class="combo-card"
+          >
+            <div class="combo-header">
+              <div class="combo-title">
+                <span class="combo-icon">{{ combo.icon }}</span>
+                <span>{{ combo.name }}</span>
+              </div>
+              <n-tag size="tiny" type="info">{{ combo.shots.length }}镜</n-tag>
+            </div>
+            <p class="combo-desc">{{ combo.description }}</p>
+            
+            <div class="combo-shots">
+              <n-tag
+                v-for="(shot, idx) in combo.shots"
+                :key="`${shot.movement}-${idx}`"
+                size="small"
+                :type="idx === 0 ? 'primary' : 'default'"
+              >
+                {{ idx + 1 }}. {{ getMovementName(shot.movement) }} · {{ getShotTypeName(shot.type) }}
+              </n-tag>
+            </div>
+
+            <div class="combo-footer">
+              <n-button size="tiny" quaternary @click="showComboDetail(combo)">
+                查看完整提示词
+              </n-button>
+              <n-button size="tiny" type="primary" @click="applyCombo(combo)">
+                一键应用
+              </n-button>
             </div>
           </div>
         </div>
-      </n-collapse-item>
-    </n-collapse>
-
-    <n-divider>推荐组合</n-divider>
-    
-    <n-list bordered size="small">
-      <n-list-item v-for="combo in shotCombinations" :key="combo.name">
-        <n-thing :title="combo.name" :description="combo.description">
-          <template #action>
-            <n-button size="tiny" @click="showComboPreview(combo)">
-              预览
-            </n-button>
-            <n-button size="tiny" type="primary" @click="emit('insert', combo.prompt)">
-              使用
-            </n-button>
-          </template>
-        </n-thing>
-      </n-list-item>
-    </n-list>
-
-    <n-modal v-model:show="showPreviewModal" preset="card" :title="currentCombo?.name" style="width: 500px">
-      <template v-if="currentCombo">
-        <n-alert type="info" class="mb-2" :show-icon="false">
-          {{ currentCombo.description }}
-        </n-alert>
-        
-        <n-card size="small" title="包含镜头" class="mb-2">
-          <n-space>
-            <n-tag v-for="shotId in currentCombo.shots" :key="shotId" type="info">
-              {{ getShotName(shotId) }}
-            </n-tag>
-          </n-space>
-        </n-card>
-        
-        <n-card size="small" title="完整提示词">
-          <n-ellipsis :line-clamp="4">{{ currentCombo.prompt }}</n-ellipsis>
-        </n-card>
       </template>
-      
+
+      <template v-else-if="activeCategory === 'quiz'">
+        <ShotLanguageQuiz
+          @go-to-movement="handleQuizGoToMovement"
+        />
+      </template>
+
+      <template v-else>
+        <div class="movement-grid">
+          <div
+            v-for="movement in categoryMovements"
+            :key="movement.id"
+            class="movement-card"
+          >
+            <div class="card-header">
+              <div class="card-title">
+                <span class="movement-name">{{ movement.name }}</span>
+                <n-tag size="tiny" type="info">{{ movement.nameEn }}</n-tag>
+              </div>
+              <n-tag v-if="movement.isHighFrequency" size="tiny" type="success">常用</n-tag>
+            </div>
+            <p class="card-desc">{{ movement.useCase }}</p>
+            
+            <div class="card-section">
+              <span class="section-label">关键词</span>
+              <div class="keyword-list">
+                <n-tag
+                  v-for="kw in movement.keywords.slice(0, 3)"
+                  :key="kw"
+                  size="small"
+                  class="keyword-tag"
+                  @click="handleInsertKeyword(kw)"
+                >
+                  {{ kw }}
+                </n-tag>
+              </div>
+            </div>
+
+            <div class="card-footer">
+              <n-button size="tiny" quaternary @click="showDetail(movement)">
+                详情
+              </n-button>
+              <n-button size="tiny" type="primary" @click="goToVideoPanel(movement)">
+                去使用
+              </n-button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <n-modal v-model:show="showDetailModal" preset="card" :title="currentMovement?.name || '详情'" style="width: 560px">
+      <template v-if="currentMovement">
+        <div class="detail-modal">
+          <div class="detail-tags">
+            <n-tag type="info">{{ currentMovement.nameEn }}</n-tag>
+            <n-tag :type="getCategoryTagType(currentMovement.category)">
+              {{ getCategoryName(currentMovement.category) }}
+            </n-tag>
+            <n-tag v-if="currentMovement.isHighFrequency" type="success">高频使用</n-tag>
+            <n-tag type="warning">推荐速度：{{ getSpeedName(currentMovement.recommendedSpeed) }}</n-tag>
+          </div>
+
+          <n-divider style="margin: 12px 0" />
+
+          <div class="detail-section">
+            <div class="detail-label">📝 用途说明</div>
+            <p class="detail-text">{{ currentMovement.useCase }}</p>
+          </div>
+
+          <div class="detail-section">
+            <div class="detail-label">💡 使用技巧</div>
+            <ul class="detail-list">
+              <li v-for="(tip, idx) in currentMovement.tips" :key="idx">{{ tip }}</li>
+            </ul>
+          </div>
+
+          <div class="detail-section">
+            <div class="detail-label">🎯 适合情绪</div>
+            <div class="emotion-tags">
+              <n-tag
+                v-for="emotion in currentMovement.suitableEmotions"
+                :key="emotion"
+                size="small"
+                type="info"
+              >
+                {{ getEmotionName(emotion) }}
+              </n-tag>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <div class="detail-label">📌 示例提示词（点击复制）</div>
+            <div class="example-list">
+              <div
+                v-for="(example, idx) in currentMovement.examples"
+                :key="idx"
+                class="example-item"
+                @click="handleInsertKeyword(example)"
+              >
+                {{ example }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
       <template #footer>
         <n-space justify="end">
-          <n-button @click="showPreviewModal = false">取消</n-button>
-          <n-button type="primary" @click="applyCombo">
+          <n-button @click="showDetailModal = false">关闭</n-button>
+          <n-button type="primary" @click="handleGoToVideoFromDetail">
+            去视频生成面板使用
+          </n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <n-modal v-model:show="showComboModal" preset="card" :title="currentCombo?.name || '组合详情'" style="width: 560px">
+      <template v-if="currentCombo">
+        <div class="detail-modal">
+          <div class="detail-tags">
+            <n-tag type="info">{{ currentCombo.shots.length }} 个镜头</n-tag>
+            <n-tag type="success">常用组合</n-tag>
+          </div>
+
+          <n-divider style="margin: 12px 0" />
+
+          <div class="detail-section">
+            <div class="detail-label">📝 适用场景</div>
+            <p class="detail-text">{{ currentCombo.description }}</p>
+          </div>
+
+          <div class="detail-section">
+            <div class="detail-label">🎬 镜头序列</div>
+            <n-steps :vertical="true" size="small">
+              <n-step
+                v-for="(shot, idx) in currentCombo.shots"
+                :key="`${shot.movement}-${idx}`"
+                :title="`${getMovementName(shot.movement)} · ${getShotTypeName(shot.type)}`"
+                :description="`${getMovementUseCase(shot.movement)}（${shot.duration}秒）`"
+              />
+            </n-steps>
+          </div>
+
+          <div class="detail-section">
+            <div class="detail-label">📌 完整提示词</div>
+            <n-input
+              :value="currentCombo.prompt"
+              type="textarea"
+              readonly
+              :rows="3"
+            />
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showComboModal = false">关闭</n-button>
+          <n-button type="primary" @click="applyCurrentCombo">
             应用到提示词
           </n-button>
         </n-space>
@@ -122,179 +354,437 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-
-interface ShotType {
-  id: string
-  name: string
-  nameEn: string
-  description: string
-  usage: string
-  keywords: string[]
-  category: 'shot_size' | 'camera_movement' | 'advanced' | 'angle'
-  examples: string[]
-}
-
-interface ShotCombo {
-  name: string
-  description: string
-  shots: string[]
-  prompt: string
-}
-
-const shotCategories = [
-  { value: 'shot_size', label: '景别', icon: 'Ruler' },
-  { value: 'camera_movement', label: '运镜', icon: 'Film' },
-  { value: 'angle', label: '视角', icon: 'Eye' },
-  { value: 'advanced', label: '高级', icon: 'Sparkles' }
-]
-
-const shotTypes: ShotType[] = [
-  { id: 'extreme-long-shot', name: '远景', nameEn: 'Extreme Long Shot', description: '展示宏大环境、开场定调的镜头', usage: '适合展示企业总部外景、城市全貌、自然风光', keywords: ['extreme long shot', 'wide establishing shot', '全景远景'], category: 'shot_size', examples: ['extreme long shot of city skyline', 'wide establishing shot of mountain range'] },
-  { id: 'full-shot', name: '全景', nameEn: 'Full Shot', description: '展示人物全身与环境关系的镜头', usage: '适合展示产品全貌、人物全身、团队合影', keywords: ['full body shot', '人物全身', '产品完整展示'], category: 'shot_size', examples: ['full body shot of model', 'full shot of product display'] },
-  { id: 'medium-shot', name: '中景', nameEn: 'Medium Shot', description: '展示人物腰部以上的镜头', usage: '适合人物对话、产品细节展示、操作演示', keywords: ['medium shot', 'waist-up', '腰部以上'], category: 'shot_size', examples: ['medium shot of presenter', 'waist-up shot of chef cooking'] },
-  { id: 'close-up', name: '近景', nameEn: 'Close-Up', description: '突出情感、产品局部特写的镜头', usage: '适合突出情感表达、产品局部特写、强调细节', keywords: ['close-up', '面部特写', '产品特写镜头'], category: 'shot_size', examples: ['close-up of face', 'product detail close-up'] },
-  { id: 'extreme-close-up', name: '特写', nameEn: 'Extreme Close-Up', description: '极致细节、情绪张力的镜头', usage: '适合展示微观细节、情绪张力、logo/标识展示', keywords: ['extreme close-up', '眼部特写', '微观细节'], category: 'shot_size', examples: ['extreme close-up of eye', 'macro shot of product texture'] },
-  { id: 'dolly-in', name: '推镜头', nameEn: 'Dolly In', description: '镜头向主体靠近，逐步聚焦', usage: '适合聚焦主体、引导观众注意力、揭示细节', keywords: ['dolly in', 'slow zoom in', '镜头缓慢推进'], category: 'camera_movement', examples: ['slow dolly in to face', 'camera pushes in on product'] },
-  { id: 'dolly-out', name: '拉镜头', nameEn: 'Dolly Out', description: '镜头远离主体，展现环境', usage: '适合展现环境、结束场景、从细节到全局', keywords: ['dolly out', 'zoom out', '镜头拉远'], category: 'camera_movement', examples: ['dolly out revealing environment', 'zoom out from detail to wide'] },
-  { id: 'pan', name: '摇镜头', nameEn: 'Pan', description: '镜头水平转动，展示横向空间', usage: '适合展示横向空间、跟随运动、扫描场景', keywords: ['pan left', 'pan right', 'horizontal pan', '水平摇镜'], category: 'camera_movement', examples: ['pan left across landscape', 'horizontal pan following subject'] },
-  { id: 'truck', name: '移镜头', nameEn: 'Truck', description: '镜头平行移动，保持主体大小不变', usage: '适合平行移动展示、保持主体大小不变', keywords: ['truck left', 'truck right', 'sideways movement'], category: 'camera_movement', examples: ['truck right following walking subject', 'sideways tracking shot'] },
-  { id: 'tracking', name: '跟镜头', nameEn: 'Tracking Shot', description: '跟随主体运动的镜头', usage: '适合跟随主体运动、营造临场感、产品使用跟拍', keywords: ['tracking shot', 'follow shot', '跟随镜头'], category: 'camera_movement', examples: ['tracking shot following runner', 'follow shot behind car'] },
-  { id: 'crane', name: '升降镜头', nameEn: 'Crane/Boom Shot', description: '镜头垂直移动，展示空间高度', usage: '适合垂直空间展示、从低到高视角变化', keywords: ['crane up', 'crane down', 'boom shot', '升降镜头'], category: 'camera_movement', examples: ['crane up from ground to rooftop', 'boom shot descending'] },
-  { id: 'dolly-zoom', name: '希区柯克变焦', nameEn: 'Dolly Zoom', description: '推拉镜头同时变焦，制造眩晕感', usage: '适合制造眩晕、紧张感，用于产品悬念或情绪转折', keywords: ['dolly zoom', 'vertigo effect', '滑动变焦'], category: 'advanced', examples: ['dolly zoom on surprised face', 'vertigo effect reveal'] },
-  { id: 'handheld', name: '手持镜头', nameEn: 'Handheld', description: '模拟手持拍摄的轻微晃动', usage: '适合营造真实感、临场感，纪录片风格', keywords: ['handheld camera', 'slight shake', '轻微晃动'], category: 'advanced', examples: ['handheld documentary style', 'shaky cam action sequence'] },
-  { id: 'low-angle', name: '低角度仰拍', nameEn: 'Low Angle', description: '从低处向上拍摄', usage: '适合塑造权威、宏伟感，用于企业领袖或产品', keywords: ['low angle shot', 'looking up', '仰视视角'], category: 'angle', examples: ['low angle hero shot', 'looking up at skyscraper'] },
-  { id: 'high-angle', name: '高角度俯拍', nameEn: 'High Angle', description: '从高处向下拍摄', usage: '适合表现渺小、脆弱感，或展示全局布局', keywords: ['high angle shot', 'overhead view', '俯视'], category: 'angle', examples: ['high angle city view', 'overhead shot of workspace'] },
-  { id: 'pov', name: '第一人称视角', nameEn: 'POV (Point of View)', description: '模拟角色视角的镜头', usage: '适合增强代入感，产品体验模拟', keywords: ['first-person view', 'POV', '主观视角'], category: 'angle', examples: ['POV walking through forest', 'first-person driving view'] },
-  { id: 'peeking', name: '窥视镜头', nameEn: 'Peeking Shot', description: '模拟从遮挡物后窥视的视角', usage: '适合营造神秘、好奇感', keywords: ['peeking through', 'over the shoulder'], category: 'advanced', examples: ['peeking through door', 'over the shoulder shot'] },
-  { id: 'aerial', name: '航拍', nameEn: 'Aerial/Drone Shot', description: '从空中俯瞰的镜头', usage: '适合展示大场景、建筑全貌、自然风光', keywords: ['aerial shot', 'drone shot', 'bird eye view', '航拍'], category: 'advanced', examples: ['aerial view of campus', 'drone shot over ocean'] },
-  { id: 'orbit', name: '环绕镜头', nameEn: 'Orbit/360 Shot', description: '围绕主体旋转的镜头', usage: '适合全方位展示产品、人物英雄时刻', keywords: ['orbit shot', '360 degree', '环绕镜头', 'circling'], category: 'camera_movement', examples: ['orbit around product', '360 shot around character'] }
-]
-
-const shotCombinations: ShotCombo[] = [
-  { name: '产品展示组合', description: '突出产品高端感', shots: ['low-angle', 'dolly-in', 'orbit'], prompt: 'low angle shot of product, slow dolly in to detail, orbit around product' },
-  { name: '企业宣传组合', description: '展示企业规模和团队', shots: ['aerial', 'tracking', 'medium-shot'], prompt: 'aerial view of building, tracking shot through office, medium shot of team' },
-  { name: '情感叙事组合', description: '营造情绪氛围', shots: ['close-up', 'dolly-in', 'handheld'], prompt: 'close-up of face, slow dolly in, handheld documentary style' },
-  { name: '开场定调组合', description: '视频开场', shots: ['extreme-long-shot', 'crane', 'dolly-in'], prompt: 'extreme long shot of location, crane down to entrance, dolly in through door' }
-]
-
-function getShotById(id: string): ShotType | undefined {
-  return shotTypes.find(shot => shot.id === id)
-}
-
-function searchShots(query: string): ShotType[] {
-  const q = query.toLowerCase()
-  return shotTypes.filter(shot =>
-    shot.name.includes(query) ||
-    shot.nameEn.toLowerCase().includes(q) ||
-    shot.description.includes(query) ||
-    shot.keywords.some(k => k.toLowerCase().includes(q))
-  )
-}
+import { useMessage } from 'naive-ui'
+import { Search, Ruler, Eye, Gauge } from 'lucide-vue-next'
+import {
+  cameraMovements,
+  shotTypes,
+  cameraAngles,
+  movementSpeeds,
+  shotCombinations,
+  movementCategories,
+  getCategoryMeta,
+  getCameraMovementById,
+} from '../../data/shotLanguage'
+import type { CameraMovement, CameraMovementCategory, EmotionTag, ShotCombination, ShotType } from '../../data/shotLanguage'
+import ShotLanguageQuiz from './ShotLanguageQuiz.vue'
 
 const emit = defineEmits<{
   insert: [keyword: string]
+  gotoVideo: [movement?: CameraMovement]
 }>()
 
-const searchText = ref('')
-const selectedCategory = ref('all')
-const showPreviewModal = ref(false)
-const currentCombo = ref<ShotCombo | null>(null)
+const message = useMessage()
 
-const filteredShots = computed(() => {
-  if (searchText.value) {
-    return searchShots(searchText.value)
-  }
-  if (selectedCategory.value !== 'all') {
-    return shotTypes.filter(s => s.category === selectedCategory.value)
-  }
-  return shotTypes
+const searchText = ref('')
+const activeCategory = ref<CameraMovementCategory | 'basics' | 'combos'>('basic_direction')
+const showDetailModal = ref(false)
+const showComboModal = ref(false)
+const currentMovement = ref<CameraMovement | null>(null)
+const currentCombo = ref<ShotCombination | null>(null)
+
+const filteredMovements = computed(() => {
+  const q = searchText.value.toLowerCase().trim()
+  if (!q) return []
+  return cameraMovements.filter(m =>
+    m.name.includes(q) ||
+    m.nameEn.toLowerCase().includes(q) ||
+    m.useCase.includes(q) ||
+    m.keywords.some(k => k.toLowerCase().includes(q)) ||
+    m.tips.some(t => t.includes(q))
+  )
 })
 
-function showComboPreview(combo: ShotCombo) {
+const categoryMovements = computed(() => {
+  if (activeCategory.value === 'basics' || activeCategory.value === 'combos') return []
+  return cameraMovements.filter(m => m.category === activeCategory.value)
+})
+
+function getCategoryName(cat: CameraMovementCategory): string {
+  return getCategoryMeta(cat)?.name || cat
+}
+
+function getCategoryTagType(cat: CameraMovementCategory): 'default' | 'primary' | 'info' | 'success' | 'warning' | 'error' {
+  const typeMap: Record<CameraMovementCategory, any> = {
+    basic_direction: 'primary',
+    spatial_movement: 'info',
+    subject_following: 'success',
+    crane_orbit: 'warning',
+    emotion_intensify: 'error',
+    transition_connector: 'default',
+  }
+  return typeMap[cat] || 'default'
+}
+
+function getSpeedName(speedId: string): string {
+  return movementSpeeds.find(s => s.id === speedId)?.name || speedId
+}
+
+function getEmotionName(emotion: EmotionTag): string {
+  const emotionMap: Record<EmotionTag, string> = {
+    calm: '平静',
+    tense: '紧张',
+    warm: '温馨',
+    epic: '震撼',
+    grand: '宏大',
+    mysterious: '神秘',
+    immersive: '沉浸',
+    documentary: '纪实',
+    dynamic: '动感',
+    delicate: '细腻',
+  }
+  return emotionMap[emotion] || emotion
+}
+
+function getMovementName(id: string): string {
+  return getCameraMovementById(id as CameraMovement)?.name || id
+}
+
+function getMovementUseCase(id: string): string {
+  return getCameraMovementById(id as CameraMovement)?.useCase || ''
+}
+
+function getShotTypeName(id: ShotType): string {
+  return shotTypes.find(s => s.id === id)?.name || id
+}
+
+function handleInsertKeyword(keyword: string) {
+  emit('insert', keyword)
+  message.success(`已插入: ${keyword}`)
+}
+
+function showDetail(movement: CameraMovement) {
+  currentMovement.value = movement
+  showDetailModal.value = true
+}
+
+function showComboDetail(combo: ShotCombination) {
   currentCombo.value = combo
-  showPreviewModal.value = true
+  showComboModal.value = true
 }
 
-function getShotName(shotId: string): string {
-  const shot = getShotById(shotId)
-  return shot?.name || shotId
+function goToVideoPanel(movement: CameraMovement) {
+  emit('gotoVideo', movement)
+  message.info('正在跳转到视频生成面板...')
 }
 
-function applyCombo() {
+function handleGoToVideoFromDetail() {
+  if (currentMovement.value) {
+    emit('gotoVideo', currentMovement.value)
+    showDetailModal.value = false
+  }
+}
+
+function applyCombo(combo: ShotCombination) {
+  emit('insert', combo.prompt)
+  message.success('已应用组合提示词')
+}
+
+function applyCurrentCombo() {
   if (currentCombo.value) {
-    emit('insert', currentCombo.value.prompt)
-    showPreviewModal.value = false
+    applyCombo(currentCombo.value)
+    showComboModal.value = false
+  }
+}
+
+function handleQuizGoToMovement(movementId: string) {
+  const movement = getCameraMovementById(movementId as CameraMovement)
+  if (movement) {
+    showDetail(movement)
   }
 }
 </script>
 
 <style scoped>
 .shot-language-panel {
-  padding: 8px 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
-.shot-header {
+.panel-header {
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
+.search-input {
+  width: 100%;
+}
+
+.category-tabs {
+  flex-shrink: 0;
+}
+
+.tab-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  font-size: 13px;
 }
 
-.shot-name {
-  font-weight: 500;
+.tab-icon {
+  font-size: 14px;
 }
 
-.shot-content {
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
   padding: 8px 0;
 }
 
-.shot-desc {
+.movement-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.movement-card {
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 12px;
+  transition: all 0.2s;
+}
+
+.movement-card:hover {
+  border-color: #18a058;
+  background: #f0fff4;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.movement-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+}
+
+.card-desc {
+  font-size: 12px;
   color: #666;
+  margin: 4px 0 8px;
+  line-height: 1.5;
+}
+
+.card-section {
   margin-bottom: 8px;
 }
 
-.shot-usage {
-  font-size: 13px;
-  color: #888;
-  margin-bottom: 8px;
+.section-label {
+  font-size: 11px;
+  color: #999;
+  display: block;
+  margin-bottom: 4px;
 }
 
-.shot-keywords {
-  margin-bottom: 8px;
+.keyword-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .keyword-tag {
   cursor: pointer;
-  margin: 2px;
 }
 
 .keyword-tag:hover {
   opacity: 0.8;
 }
 
-.shot-examples {
-  background: #f5f5f5;
-  border-radius: 4px;
-  padding: 8px;
+.card-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid #f0f0f0;
 }
 
-.example-item {
-  font-size: 12px;
-  color: #666;
-  padding: 4px 0;
+.basics-section {
+  margin-bottom: 16px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.basic-card {
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 10px;
   cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
 }
 
-.example-item:hover {
-  color: #18a058;
+.basic-card:hover {
+  border-color: #18a058;
+  background: #f0fff4;
 }
 
-.label {
+.basic-title {
   font-weight: 500;
-  font-size: 12px;
+  font-size: 13px;
+  color: #333;
+  margin-bottom: 2px;
+}
+
+.basic-en {
+  font-size: 11px;
+  color: #999;
+}
+
+.combo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.combo-card {
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 12px;
+  transition: all 0.2s;
+}
+
+.combo-card:hover {
+  border-color: #18a058;
+  background: #f0fff4;
+}
+
+.combo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.combo-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
   color: #333;
 }
 
-.mb-2 {
+.combo-icon {
+  font-size: 16px;
+}
+
+.combo-desc {
+  font-size: 12px;
+  color: #666;
+  margin: 4px 0 8px;
+  line-height: 1.5;
+}
+
+.combo-shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
   margin-bottom: 8px;
+}
+
+.combo-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty-state {
+  padding: 40px 0;
+}
+
+.detail-modal {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.detail-section {
+  margin-bottom: 14px;
+}
+
+.detail-label {
+  font-weight: 600;
+  font-size: 13px;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.detail-text {
+  font-size: 13px;
+  color: #555;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.detail-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: #555;
+  line-height: 1.8;
+}
+
+.emotion-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.example-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.example-item {
+  background: #f5f5f5;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+  font-family: monospace;
+  transition: background 0.2s;
+}
+
+.example-item:hover {
+  background: #e8ffe8;
+  color: #18a058;
 }
 </style>

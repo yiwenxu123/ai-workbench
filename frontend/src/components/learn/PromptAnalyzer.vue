@@ -139,7 +139,7 @@ watch(() => props.prompt, async (val) => {
 
 <style scoped>
 .prompt-analyzer {
-  background: #fafafa;
+  background: var(--bg-subtle);
   border-radius: 8px;
   padding: 10px 12px;
   margin-top: 8px;

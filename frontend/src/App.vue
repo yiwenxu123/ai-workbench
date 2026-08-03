@@ -36,7 +36,24 @@
                 <div class="app-logo">
                   <span class="logo-icon"><n-icon><Sparkles /></n-icon></span>
                   <span class="logo-text">AI 绘图工作台</span>
+                  <span class="logo-badge">BETA</span>
                 </div>
+                <span
+                  v-if="configReady"
+                  class="header-status header-status--ready"
+                  :title="`生成能力已就绪 (${activeProviderCount} 个供应商)`"
+                >
+                  <span class="header-status__dot"></span>
+                  {{ activeProviderCount }} 个能力已就绪
+                </span>
+                <span
+                  v-else
+                  class="header-status header-status--warning"
+                  title="尚未配置生成能力"
+                >
+                  <span class="header-status__dot"></span>
+                  未配置
+                </span>
               </div>
               <div class="header-actions">
                 <n-button class="header-btn" size="small" quaternary @click="togglePanel">
@@ -55,7 +72,7 @@
           <n-layout class="app-body">
             <n-layout-content class="app-content">
               <div class="content-wrapper">
-                <n-tabs v-model:value="mainTab" type="card" animated class="main-tabs">
+                <n-tabs v-model:value="mainTab" type="line" class="main-tabs">
                   <n-tab-pane name="image">
                     <template #tab>
                       <div class="tab-label"><n-icon><ImageOutline /></n-icon>图像生成</div>
@@ -103,7 +120,7 @@
                   <TemplateCenter @select="handleTemplateSelect" />
                 </div>
                 <div v-show="rightTab === 'knowledge'">
-                  <KnowledgeBase @insert="handleTermInsert" />
+                  <KnowledgeBase @insert="handleTermInsert" @goto-video="handleGotoVideoFromKnowledge" />
                 </div>
                 <div v-show="rightTab === 'analyzer'">
                   <ImageAnalyzer />
@@ -166,8 +183,25 @@ const adminModeEnabled = ref(localStorage.getItem('ai_studio_admin_mode') === 't
 // 面板默认隐藏，让任务入口（图像/视频/编辑）占据主视野
 const storedPanelOpen = localStorage.getItem(SK + 'open')
 const panelOpen = ref(storedPanelOpen === null ? false : storedPanelOpen === 'true')
-const windowWidth = ref(typeof window === 'undefined' ? 520 : window.innerWidth)
-const drawerWidth = computed(() => Math.min(520, windowWidth.value))
+const windowWidth = ref(typeof window === 'undefined' ? 1024 : window.innerWidth)
+// 桌面端默认 520,平板 420,移动端全屏
+const drawerWidth = computed(() => {
+  if (windowWidth.value < 640) return windowWidth.value
+  if (windowWidth.value < 1024) return 420
+  return Math.min(520, windowWidth.value - 80)
+})
+
+// 顶部状态指示:聚合"已配置且可用"的能力数量(图像/视频/编辑/LLM)
+const activeProviderCount = computed(() => {
+  let count = 0
+  if (providerStore.hasConfiguredImageProvider) count++
+  if (providerStore.hasConfiguredVideoProvider) count++
+  if (providerStore.hasConfiguredEditProvider) count++
+  if (providerStore.hasConfiguredLLM) count++
+  if (providerStore.visionProviderPresets.some(p => providerStore.providers.find(vp => vp.type === p.type)?.apiKey)) count++
+  return count
+})
+const configReady = computed(() => activeProviderCount.value > 0)
 
 function updateWindowWidth() {
   windowWidth.value = window.innerWidth
@@ -225,10 +259,27 @@ const BRAND_THEME_OVERRIDES: GlobalThemeOverrides = {
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     fontSize: '14px',
     fontSizeSmall: '13px',
+    successColor: '#10b981',
+    successColorHover: '#059669',
+    successColorPressed: '#047857',
+    successColorSuppl: '#34d399',
+    warningColor: '#f59e0b',
+    warningColorHover: '#d97706',
+    warningColorPressed: '#b45309',
+    warningColorSuppl: '#fbbf24',
+    errorColor: '#ef4444',
+    errorColorHover: '#dc2626',
+    errorColorPressed: '#b91c1c',
+    errorColorSuppl: '#f87171',
+    infoColor: '#3b82f6',
+    infoColorHover: '#2563eb',
+    infoColorPressed: '#1d4ed8',
+    infoColorSuppl: '#60a5fa',
   },
   Button: { borderRadiusMedium: '10px', borderRadiusSmall: '6px', fontWeightMedium: '600' },
   Card: { borderRadius: '14px' },
   Modal: { borderRadius: '16px' },
+  Drawer: { borderRadius: '16px' },
   Input: { borderRadius: '10px', border: '1px solid #e2e8f0' },
   Select: { menuBorderRadius: '10px' },
   Tabs: { tabBorderRadius: '8px' },
@@ -255,6 +306,13 @@ function handleEditImageFromGallery(imageUrl: string) { mainTab.value = 'edit'; 
 function handleGenerateVideo(imageUrl: string, prompt: string) { mainTab.value = 'video'; videoStore.sourceImage = imageUrl; videoStore.prompt = prompt }
 function handleQuickNavToVideo(prompt: string) { mainTab.value = 'video'; videoStore.prompt = prompt }
 function handleQuickNavToEdit(instruction: string) { mainTab.value = 'edit'; editorStore.setInstruction(instruction) }
+function handleGotoVideoFromKnowledge(movement?: any) {
+  mainTab.value = 'video'
+  closeDrawer()
+  if (movement && movement.id) {
+    videoStore.applyMovementWithRecommendedSpeed(movement)
+  }
+}
 
 onMounted(async () => {
   window.addEventListener('resize', updateWindowWidth)
@@ -295,21 +353,21 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: linear-gradient(135deg, var(--header-bg) 0%, #1e293b 50%, #1e1b4b 100%);
+  background: var(--header-bg);
 }
 
 .sk-logo {
   width: 140px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: linear-gradient(90deg, rgba(255,255,255,0.08) 25%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.08) 75%);
   background-size: 400px 100%;
   animation: sk-shimmer 1.5s ease-in-out infinite;
 }
 
-.sk-actions { display: flex; gap: 10px; }
+.sk-actions { display: flex; gap: var(--space-3); }
 .sk-btn {
-  width: 80px; height: 28px; border-radius: 6px;
+  width: 80px; height: 28px; border-radius: var(--radius-sm);
   background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.06) 75%);
   background-size: 400px 100%;
   animation: sk-shimmer 1.5s ease-in-out infinite;
@@ -320,18 +378,18 @@ onUnmounted(() => {
   background-size: 400px 100%;
 }
 .sk-btn-wide {
-  width: 100%; height: 40px; margin-top: 16px;
+  width: 100%; height: 40px; margin-top: var(--space-4);
   background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-100) 50%, var(--gray-200) 75%);
   background-size: 400px 100%;
   animation: sk-shimmer 1.5s ease-in-out infinite;
 }
 /* ── 骨架屏 Tabs ── */
 .sk-tabs {
-  display: flex; gap: 8px; padding: 12px 32px 0;
-  border-bottom: 1px solid var(--gray-200);
+  display: flex; gap: var(--space-2); padding: 12px 32px 0;
+  border-bottom: 1px solid var(--border);
 }
 .sk-tab {
-  width: 100px; height: 32px; border-radius: 8px 8px 0 0;
+  width: 100px; height: 32px; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-100) 50%, var(--gray-200) 75%);
   background-size: 400px 100%;
   animation: sk-shimmer 1.5s ease-in-out infinite;
@@ -343,26 +401,26 @@ onUnmounted(() => {
 .sk-body {
   display: flex; gap: var(--panel-gap); padding: 20px 32px; flex: 1; min-height: 0;
 }
-.sk-panel { flex: 0 0 380px; display: flex; flex-direction: column; gap: 12px; }
+.sk-panel { flex: 0 0 380px; display: flex; flex-direction: column; gap: var(--space-3); }
 .sk-line {
-  height: 14px; border-radius: 4px;
+  height: 14px; border-radius: var(--radius-xs);
   background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-100) 50%, var(--gray-200) 75%);
   background-size: 400px 100%;
   animation: sk-shimmer 1.5s ease-in-out infinite;
 }
 .sk-line-short { width: 60%; }
 .sk-block {
-  flex: 1; border-radius: 10px;
+  flex: 1; border-radius: var(--radius-md);
   background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-100) 50%, var(--gray-200) 75%);
   background-size: 400px 100%;
   animation: sk-shimmer 1.5s ease-in-out infinite;
 }
 .sk-block-input { flex: 0 0 120px; }
 .sk-block-tall { flex: 1; min-height: 300px; }
-.sk-result { flex: 1; border-radius: 10px; display: flex; flex-direction: column; }
+.sk-result { flex: 1; border-radius: var(--radius-md); display: flex; flex-direction: column; }
 .sk-loading-text {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  font-size: 13px; color: var(--text-secondary);
+  position: fixed; bottom: var(--space-6); left: 50%; transform: translateX(-50%);
+  font-size: var(--font-size-sm); color: var(--text-secondary);
 }
 
 /* ═══════════════════════════════════════════════
@@ -373,16 +431,20 @@ onUnmounted(() => {
   background: var(--bg-page);
 }
 
-/* ── Header — Clean dark bar ── */
+/* ── Header — Dark immersive bar ── */
 .app-header {
   height: var(--header-height);
-  padding: 0 24px;
+  padding: 0 var(--content-padding);
   display: flex;
   align-items: center;
   background: var(--header-bg);
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  background-image:
+    radial-gradient(circle at 0% 50%, rgba(79, 125, 243, 0.18) 0%, transparent 40%),
+    radial-gradient(circle at 100% 50%, rgba(139, 92, 246, 0.15) 0%, transparent 40%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   position: relative;
-  z-index: 100;
+  z-index: var(--z-header);
+  color: var(--header-fg);
 }
 
 .header-content {
@@ -390,58 +452,117 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  max-width: 1800px;
+  margin: 0 auto;
 }
 
-.header-left { display: flex; align-items: center; gap: 10px; }
+.header-left { display: flex; align-items: center; gap: var(--space-3); }
 
-.app-logo { display: flex; align-items: center; gap: 8px; }
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  user-select: none;
+}
 
 .logo-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  background: var(--brand-500);
-  border-radius: 6px;
-  font-size: 14px;
+  width: 30px;
+  height: 30px;
+  background: linear-gradient(135deg, var(--brand-500) 0%, var(--accent-500) 100%);
+  border-radius: var(--radius-sm);
+  font-size: 16px;
   color: #fff;
   flex-shrink: 0;
+  box-shadow: var(--shadow-glow);
+  transition: transform var(--duration-base) var(--ease-out);
 }
-.logo-icon :deep(.n-icon) {
-  color: #fff;
+.logo-icon :deep(.n-icon) { color: #fff; }
+.app-logo:hover .logo-icon {
+  transform: rotate(-8deg) scale(1.05);
 }
 
 .logo-text {
-  font-size: 14px;
+  font-size: var(--font-size-md);
   font-weight: 600;
-  color: rgba(255,255,255,0.85);
-  letter-spacing: -0.2px;
+  color: rgba(255, 255, 255, 0.92);
+  letter-spacing: -0.3px;
 }
 
-.header-actions { display: flex; align-items: center; gap: 6px; }
+.logo-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--brand-300);
+  background: rgba(79, 125, 243, 0.12);
+  border: 1px solid rgba(79, 125, 243, 0.25);
+  border-radius: var(--radius-full);
+  letter-spacing: 0.5px;
+  margin-left: var(--space-1);
+}
+
+.header-actions { display: flex; align-items: center; gap: var(--space-2); }
 
 .header-btn {
-  height: 30px !important;
-  font-size: 12px !important;
-  color: rgba(255,255,255,0.55) !important;
-  border-color: rgba(255,255,255,0.08) !important;
+  height: 32px !important;
+  padding: 0 12px !important;
+  font-size: var(--font-size-sm) !important;
+  font-weight: 500 !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-md) !important;
 }
 .header-btn:hover {
   color: #fff !important;
-  background: rgba(255,255,255,0.08) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  transform: translateY(0) !important;
 }
+
 .header-btn--primary {
-  height: 30px !important;
-  font-size: 12px !important;
-  background: rgba(79,125,243,0.12) !important;
-  border: 1px solid rgba(79,125,243,0.25) !important;
-  color: #93bbfd !important;
+  background: linear-gradient(135deg, var(--brand-500) 0%, var(--brand-600) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(79, 125, 243, 0.25);
 }
 .header-btn--primary:hover {
-  background: rgba(79,125,243,0.2) !important;
-  border-color: rgba(79,125,243,0.4) !important;
+  background: linear-gradient(135deg, var(--brand-400) 0%, var(--brand-500) 100%) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 4px 12px rgba(79, 125, 243, 0.35);
+  transform: translateY(-1px) !important;
 }
+
+.header-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 10px;
+  font-size: var(--font-size-sm);
+  color: var(--gray-500);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-full);
+  margin-right: var(--space-2);
+}
+.header-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--gray-400);
+}
+.header-status--ready { color: var(--success-600); background: var(--success-50); }
+.header-status--ready .header-status__dot {
+  background: var(--success-500);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+.header-status--warning { color: var(--warning-600); background: var(--warning-50); }
+.header-status--warning .header-status__dot { background: var(--warning-500); }
+.header-status--error { color: var(--error-600); background: var(--error-50); }
+.header-status--error .header-status__dot { background: var(--error-500); }
 
 /* ── Body / Content — seamless ── */
 .app-body { height: calc(100vh - var(--header-height)); }
@@ -461,37 +582,38 @@ onUnmounted(() => {
   .content-wrapper { padding: 0 40px; }
 }
 
-/* ── Tabs — Card-style navigation ── */
+/* ── Tabs — Modern line style ── */
 .main-tabs {
   height: 100%;
 }
 
 .main-tabs :deep(.n-tabs-nav) {
-  padding: 0 0 0 var(--content-padding);
+  padding: 0 0 0 var(--space-2);
   background: transparent;
 }
 
 .main-tabs :deep(.n-tabs-tab) {
-  font-size: 14px;
+  font-size: var(--font-size-md);
   font-weight: 500;
-  padding: 10px 20px;
-  opacity: 0.7;
+  padding: 10px 18px;
+  color: var(--text-secondary);
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   transition: color var(--duration-fast) var(--ease-out),
-              background var(--duration-fast) var(--ease-out),
-              opacity var(--duration-fast) var(--ease-out);
+              background var(--duration-fast) var(--ease-out);
 }
 
 .main-tabs :deep(.n-tabs-tab:hover) {
-  opacity: 0.9;
+  color: var(--text-primary);
   background: var(--bg-subtle);
 }
 
 .main-tabs :deep(.n-tabs-tab--active) {
-  opacity: 1;
   font-weight: 600;
   color: var(--brand-600);
-  background: var(--bg-card);
+}
+[theme="dark"] .main-tabs :deep(.n-tabs-tab--active),
+:global(.dark) .main-tabs :deep(.n-tabs-tab--active) {
+  color: var(--brand-300);
 }
 
 .main-tabs :deep(.n-tabs-tab--active .n-icon) {
@@ -524,10 +646,19 @@ onUnmounted(() => {
 .tab-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
-.drawer-tabs { margin-bottom: 16px; }
+.drawer-tabs { margin-bottom: var(--space-4); }
 .drawer-body { height: 100%; overflow-y: auto; }
 
+/* ── Mobile responsive header ── */
+@media (max-width: 768px) {
+  .header-content { padding: 0; }
+  .logo-text { display: none; }
+  .logo-badge { display: none; }
+  .header-btn :deep(span) { display: none; }
+  .header-btn { padding: 0 8px !important; }
+  .header-status { display: none; }
+}
 </style>

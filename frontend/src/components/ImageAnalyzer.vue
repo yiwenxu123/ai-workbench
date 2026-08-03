@@ -288,7 +288,7 @@ onMounted(() => {
 }
 
 .result-card {
-  background: #fafafa;
+  background: var(--bg-subtle);
 }
 
 .result-prompt {

@@ -21,10 +21,18 @@
 
       <slot name="quick-entry" />
 
-      <n-alert v-if="!canUseImage" type="warning" class="mb-3" :show-icon="false">
-        <span>请先配置生成图片能力</span>
-        <n-button text type="primary" @click="configStore.showConfigModal = true">立即配置</n-button>
-      </n-alert>
+      <div v-if="!canUseImage" class="status-banner mb-3" role="status">
+        <div class="status-banner__icon">
+          <n-icon :component="AlertCircle" size="16" />
+        </div>
+        <div class="status-banner__content">
+          <div class="font-semibold">请先配置生成图片能力</div>
+          <div class="text-xs mt-1" style="opacity: 0.85">选择一个平台预设并填入 API Key 即可开始创作</div>
+        </div>
+        <n-button class="status-banner__action" type="primary" size="small" @click="configStore.showConfigModal = true">
+          立即配置
+        </n-button>
+      </div>
 
       <n-form label-placement="left" label-width="60">
         <div class="prompt-label">提示词</div>
@@ -216,7 +224,7 @@ import {
   NForm, NFormItem, NInput, NInputNumber, NSelect, NButton, NGrid, NGi, NAlert, NIcon,
   NCollapse, NCollapseItem, NCollapseTransition, NTag, NSpace, NText,
 } from 'naive-ui'
-import { Settings, Sparkles, Zap, ChevronDown, ChevronUp } from 'lucide-vue-next'
+import { Settings, Sparkles, Zap, ChevronDown, ChevronUp, AlertCircle } from 'lucide-vue-next'
 import { useConfigStore, useGeneratorStore, useProviderStore } from '../../stores'
 import { useCapabilityReady } from '../../composables/useCapabilityReady'
 import PromptAnalyzer from '../learn/PromptAnalyzer.vue'
