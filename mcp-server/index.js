@@ -158,7 +158,7 @@ const tools = [
   },
   {
     name: "optimize_prompt",
-    description: "结合知识库内容进行知识增强型提示词优化，返回优化后的英文提示词、中文翻译、负面词和解释。",
+    description: "结合知识库内容进行知识增强型提示词优化，返回优化后的英文提示词、中文翻译、负面词和解释。LLM 凭证可选：未传 llm_endpoint/llm_api_key 且后端未配置 LLM_API_KEY 时，自动降级为知识库规则增强（补充术语、负面词），仍然可用。",
     inputSchema: {
       type: "object",
       properties: {
@@ -166,11 +166,11 @@ const tools = [
         scene: { type: "string", enum: ["product", "marketing", "presentation", "portrait", "illustration", "general"], default: "general" },
         style: { type: "string", enum: ["general", "professional", "minimalist", "creative", "corporate", "casual"], default: "general" },
         modelType: { type: "string", description: "目标图像模型ID，如 doubao-seedream-4-5-251128" },
-        llm_endpoint: { type: "string", description: "LLM API端点，如 https://api.deepseek.com/v1/chat/completions" },
-        llm_api_key: { type: "string", description: "LLM API密钥" },
+        llm_endpoint: { type: "string", description: "LLM API端点（可选），如 https://api.deepseek.com/v1/chat/completions" },
+        llm_api_key: { type: "string", description: "LLM API密钥（可选）" },
         llm_model: { type: "string", default: "deepseek-chat" },
       },
-      required: ["prompt", "llm_endpoint", "llm_api_key"],
+      required: ["prompt"],
     },
   },
   {

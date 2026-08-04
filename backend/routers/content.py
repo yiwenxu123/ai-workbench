@@ -3,6 +3,7 @@
 数据源：SQLite (knowledge.db) — 替代原 JSON 文件
 """
 import json
+import os
 import re
 import time
 
@@ -336,8 +337,54 @@ def _friendly_llm_error(message: str, code: str = "") -> str:
     return message[:200] or f"HTTP 错误 (code={code})"
 
 
+def _rule_enhance_prompt(prompt: str, kb_entries: list[dict]) -> dict:
+    """无 LLM 凭证时的降级路径：基于知识库的规则增强，纯本地、零外部依赖，永远可用。"""
+    groups: dict[str, list[dict]] = {}
+    for e in kb_entries:
+        groups.setdefault(e.get("type", "other"), []).append(e)
+
+    enhanced = prompt.strip()
+    reason_parts: list[str] = []
+
+    term_words = [t.get("title", "").strip() for t in groups.get("term", [])[:3] if t.get("title", "").strip()]
+    if term_words:
+        enhanced = f"{enhanced}, {', '.join(term_words)}"
+        reason_parts.append(f"补充术语：{'、'.join(term_words)}")
+
+    formula = groups.get("formula", [None])[0]
+    if formula and formula.get("content"):
+        reason_parts.append(f"参考提示词公式：{formula.get('content', '').strip()}")
+
+    neg_parts: list[str] = []
+    for np_ in groups.get("negative_pack", []):
+        neg = np_.get("negativePrompt", "").strip()
+        for part in re.split(r"[，,、;；]", neg):
+            part = part.strip()
+            if part and part not in neg_parts:
+                neg_parts.append(part)
+    if not neg_parts:
+        neg_parts = ["blurry", "low quality", "distorted", "extra limbs", "watermark", "text", "logo"]
+
+    explanation = "；".join(reason_parts) + "。" if reason_parts else "知识库未命中针对性条目，保留原提示词。"
+    explanation += "（无 LLM 凭证，已降级为知识库规则增强；在 .env 配置 LLM_API_KEY/LLM_API_ENDPOINT 后可获得完整 LLM 优化）"
+
+    return {
+        "success": True,
+        "optimizedPrompt": enhanced,
+        "optimizedPromptCN": prompt,
+        "negativePrompt": ", ".join(neg_parts[:8]),
+        "explanation": explanation,
+        "knowledgeRefs": kb_entries[:6],
+        "degraded": True,
+    }
+
+
 @router.post("/api/optimize-prompt", summary="知识增强型提示词优化 (Skill)", tags=["Skills"], operation_id="optimizePrompt")
 async def optimize_prompt(request: OptimizePromptRequest):
+    llm_endpoint = request.llm_endpoint or os.getenv("LLM_API_ENDPOINT", "")
+    llm_api_key = request.llm_api_key or os.getenv("LLM_API_KEY", "")
+    llm_model = request.llm_model or os.getenv("LLM_API_MODEL", "deepseek-chat")
+
     scene_map = {
         "product": "电商产品展示图，白底或简洁背景，突出产品细节，商业摄影风格",
         "marketing": "社交媒体营销宣传图，视觉冲击力强，适合小红书/抖音/公众号封面",
@@ -359,6 +406,9 @@ async def optimize_prompt(request: OptimizePromptRequest):
 
     # 1. 使用 FTS5 搜索知识库
     top_kb = knowledge_search(query=request.prompt, scene=request.scene, limit=10)
+
+    if not (llm_endpoint and llm_api_key):
+        return _rule_enhance_prompt(request.prompt, top_kb)
 
     # 2. 构建 system prompt
     kb_parts = []
@@ -422,7 +472,7 @@ async def optimize_prompt(request: OptimizePromptRequest):
 
     # 3. 调用 LLM
     payload = {
-        "model": request.llm_model,
+        "model": llm_model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"请优化以下提示词：{request.prompt}"},
@@ -431,13 +481,13 @@ async def optimize_prompt(request: OptimizePromptRequest):
         "temperature": 0.7,
     }
     headers = {
-        "Authorization": f"Bearer {request.llm_api_key}",
+        "Authorization": f"Bearer {llm_api_key}",
         "Content-Type": "application/json",
     }
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(request.llm_endpoint, json=payload, headers=headers)
+            resp = await client.post(llm_endpoint, json=payload, headers=headers)
             resp.raise_for_status()
             result = resp.json()
         raw_text = result["choices"][0]["message"]["content"]

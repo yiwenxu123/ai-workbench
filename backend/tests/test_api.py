@@ -251,3 +251,34 @@ class TestHealthAPI:
         resp = client.get("/")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
+
+
+class TestOptimizePromptFallback:
+    """无 LLM 凭证时 /api/optimize-prompt 必须降级为知识库规则增强而非报错"""
+
+    def test_no_llm_credentials_falls_back(self, client, monkeypatch):
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_API_ENDPOINT", raising=False)
+        resp = client.post("/api/optimize-prompt", json={"prompt": "白色保温杯", "scene": "illustration"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["degraded"] is True
+        assert data["optimizedPrompt"]
+        assert data["negativePrompt"]
+        assert data["explanation"]
+        assert "LLM" in data["explanation"]
+
+    def test_rule_enhancement_appends_terms_and_negatives(self, client, monkeypatch, sample_knowledge):
+        from knowledge_db import knowledge_upsert
+        for item in sample_knowledge:
+            knowledge_upsert(item)
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_API_ENDPOINT", raising=False)
+        resp = client.post("/api/optimize-prompt", json={"prompt": "霓虹"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["degraded"] is True
+        assert data["optimizedPrompt"]
+        assert data["knowledgeRefs"]

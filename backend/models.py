@@ -177,8 +177,8 @@ class OptimizePromptRequest(BaseModel):
     scene: str = Field(default="general", max_length=50, description="场景: product/marketing/presentation/portrait/illustration/general")
     style: str = Field(default="general", max_length=50, description="风格: general/professional/minimalist/creative/corporate/casual")
     modelType: str = Field(default="", max_length=100, description="目标图像模型ID")
-    llm_endpoint: str = Field(..., description="LLM API端点")
-    llm_api_key: str = Field(..., description="LLM API密钥")
+    llm_endpoint: str = Field(default="", description="LLM API端点（可选，默认读 LLM_API_ENDPOINT 环境变量；未配置时降级为知识库规则增强）")
+    llm_api_key: str = Field(default="", description="LLM API密钥（可选，默认读 LLM_API_KEY 环境变量；未配置时降级为知识库规则增强）")
     llm_model: str = Field(default="deepseek-chat", description="LLM模型名称")
 
 
