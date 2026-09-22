@@ -283,10 +283,11 @@ def main():
 
     todo, skipped = select_shots(targets, only=want, missing_hash=miss)
 
-    print(f"🎨 provider={prov_name}（{prov['cost_note']}） 模型={args.model}（{msrc}） 比例={ar} 风格={preset_name}")
+    print(f"🎨 provider={prov_name}（{prov['cost_note']}） 模型={args.model}（{msrc}·仅主选） 比例={ar} 风格={preset_name}")
     if len(chain) > 1:
-        print(f"    🔗 降级链：{' → '.join(c['name'] for c in chain)}"
-              + ('（test 档·仅 ¥0 通道）' if free_only else ''))
+        print(f"    🔗 降级链：{' → '.join(c['name'] + '(' + (c.get('model') or '?') + ')' for c in chain)}"
+              '（各家各用自己的模型）'
+              + ('·test 档仅 ¥0 通道' if free_only else ''))
     if args.sample_only:
         print("    （样图先行：仅第 1 镜）")
     print(f"    待处理 {len(todo)} 镜" +
