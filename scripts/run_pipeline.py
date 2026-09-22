@@ -828,6 +828,7 @@ def main():
                     "source": cj.get("source") or "",
                     "recommended": cj.get("recommended") or "",
                     "titles": [t.get("text") for t in (cj.get("titles") or []) if isinstance(t, dict)],
+                    "copy": cj.get("copy") or {},
                 })
             except Exception as e:
                 print(f"⚠️  cover.json 读取失败（不影响管线）: {type(e).__name__}: {e}", file=sys.stderr)
