@@ -1,0 +1,204 @@
+{
+  "_version": 1,
+  "_note": "视频生产模型目录（v5.1）。与 DSH 自身的对话模型配置相互独立：这里只管『脚本→成片』的生产模型（TTS/生图/视频）。加模型优先在网关后台配渠道，这里只登记条目；引擎启动时把条目动态合并进 provider 注册表，新增可用模型通常无需改 Python。价格单位：TTS=元/万字符，image/video=元/张(片段)。tag 仅用于面板分组。",
+  "gateways": {
+    "stepfun": {
+      "base_url": "https://api.stepfun.com/v1",
+      "secret_file": "stepfun.env",
+      "key_env": "STEPFUN_API_KEY",
+      "_note": "阶跃星辰，OpenAI 兼容 /audio/speech 与 /images/generations"
+    },
+    "newapi": {
+      "base_url": "",
+      "secret_file": "newapi.env",
+      "key_env": "NEWAPI_API_KEY",
+      "_note": "自托管 new-api/one-api 网关（OpenAI 兼容）。base_url 形如 http://host:3000/v1；在后台挂好百炼图像/TTS 等渠道后填这里，一处密钥聚合多家。"
+    },
+    "siliconflow": {
+      "base_url": "https://api.siliconflow.cn/v1",
+      "secret_file": "siliconflow.env",
+      "key_env": "SILICONFLOW_API_KEY",
+      "_note": "硅基流动（OpenAI 兼容）。生图尺寸 width×height，竖版 720x1280。"
+    },
+    "ark-plan": {
+      "base_url": "https://ark.cn-beijing.volces.com/api/plan/v3",
+      "secret_file": "ark.env",
+      "key_env": "ARK_API_KEY",
+      "_note": "火山方舟 Agent Plan 专用端点（AFP 套餐积分，区别于后付费 /api/v3）。生图强制 ≥3,686,400 像素（2K 档）。"
+    }
+  },
+  "fallback_chains": {
+    "_note": "P1-c 降级链尾候选（有序）：主选恒在链首，本清单只补充「失败后按序换谁」。项目配置 {tts,image}.fallback 可整体覆盖；test 档只会降级到登记价 ¥0 的通道。placeholder 不入链（本地兜底不失败，且不可交付不该出现在 prod 链里）。",
+    "image": [
+      "ark_plan",
+      "siliconflow",
+      "dashscope",
+      "stepfun",
+      "minimax"
+    ],
+    "tts": [
+      "stepfun",
+      "edge",
+      "dashscope"
+    ]
+  },
+  "tts": [
+    {
+      "provider": "edge",
+      "protocol": "edge",
+      "model": null,
+      "label": "Edge TTS（免费）",
+      "default_voice": "zh-CN-YunjianNeural",
+      "price_per_wan": 0,
+      "tag": "免费 · 开发档默认"
+    },
+    {
+      "provider": "stepfun",
+      "gateway": "stepfun",
+      "protocol": "openai-audio",
+      "model": "step-tts-mini",
+      "label": "阶跃 Mini（高表现力·免费额度）",
+      "default_voice": "zhixingjiejie",
+      "price_per_wan": 0,
+      "voices": [
+        "zhixingjiejie",
+        "linjiajiejie",
+        "linjiameimei",
+        "qingniandaxuesheng",
+        "ruanmengnvsheng",
+        "youyanvsheng",
+        "lengyanyujie",
+        "shuangkuaijiejie",
+        "wenjingxuejie",
+        "wenrounansheng"
+      ],
+      "tag": "免费额度 · test 可选"
+    },
+    {
+      "provider": "stepfun",
+      "gateway": "stepfun",
+      "protocol": "openai-audio",
+      "model": "step-tts-2",
+      "label": "阶跃 TTS-2（旗舰·免费额度）",
+      "default_voice": "zhixingjiejie",
+      "price_per_wan": 0,
+      "voices": [
+        "zhixingjiejie",
+        "linjiajiejie"
+      ],
+      "tag": "免费额度"
+    },
+    {
+      "provider": "dashscope",
+      "model": "qwen3-tts-flash",
+      "protocol": "dashscope-http",
+      "label": "百炼 qwen3-tts-flash（系统音色）",
+      "default_voice": "Serena",
+      "price_per_wan": 0.8,
+      "tag": "生产"
+    },
+    {
+      "provider": "dashscope",
+      "model": "cosyvoice-v3.5-flash",
+      "protocol": "dashscope-ws",
+      "label": "百炼 CosyVoice（克隆音色）",
+      "default_voice": "",
+      "price_per_wan": 0.8,
+      "bind_voice_model": true,
+      "tag": "生产 · 克隆"
+    }
+  ],
+  "image": [
+    {
+      "provider": "placeholder",
+      "protocol": "local",
+      "model": null,
+      "label": "本地占位图（¥0）",
+      "price": 0,
+      "tag": "开发档默认 · 不可交付"
+    },
+    {
+      "provider": "stepfun",
+      "gateway": "stepfun",
+      "protocol": "stepfun-image",
+      "model": "step-image-edit-2",
+      "label": "阶跃 step-image-edit-2（下线倒计时）",
+      "price": 0.02,
+      "tag": "⚠️2026-10-10 永久下线 · 引擎已频繁503 · 仅应急",
+      "_note": "竖版 1360x768（官方 size 为 height×width），prompt≤512。早期免费的 step-1x-medium 已被平台移除（model not supported）。"
+    },
+    {
+      "provider": "stepfun",
+      "gateway": "stepfun",
+      "protocol": "stepfun-image",
+      "model": "step-2x-large",
+      "label": "阶跃 step-2x-large（下线倒计时）",
+      "price": 0.1,
+      "tag": "⚠️2026-10-10 永久下线 · 仅应急",
+      "_note": "竖版 800x1280。与 edit-2 同日下线，届时阶跃全平台无任何文生图模型。"
+    },
+    {
+      "provider": "ark_plan",
+      "gateway": "ark-plan",
+      "protocol": "ark-plan-image",
+      "model": "doubao-seedream-5.0-lite",
+      "label": "火山方舟 Seedream 5.0 Lite（Agent Plan）",
+      "price": 0,
+      "tag": "套餐积分 ¥0 · 生产首选 · 2K竖版1440x2560 · 约25s/张 · 自带AIGC水印",
+      "_note": "必须走 /api/plan/v3 端点（后付费 /api/v3 的带日期模型名在 plan 端点不可用，反之亦然）。模型名用套餐短名。约25s/张，concurrency 建议 2。"
+    },
+    {
+      "provider": "siliconflow",
+      "gateway": "siliconflow",
+      "protocol": "openai-image",
+      "model": "Kwai-Kolors/Kolors",
+      "label": "硅基流动 Kolors（免费）",
+      "price": 0,
+      "tag": "免费 · 生产首选 · 竖版 720x1280 · 4s/张",
+      "_note": "官方价格页 siliconflow.cn/pricing 标注免费（2026-09 实测）。OpenAI 兼容 /images/generations，返回 PNG（引擎下载后自动归一化为 JPEG）。新用户另赠 16 元额度。"
+    },
+    {
+      "provider": "siliconflow",
+      "gateway": "siliconflow",
+      "protocol": "openai-image",
+      "model": "Tongyi-MAI/Z-Image-Turbo",
+      "label": "硅基 Z-Image-Turbo（付费备选）",
+      "price": 0.1,
+      "tag": "0.1元/张 · Kolors 不可用时的付费备选",
+      "_note": "阿里通义 6B 蒸馏版，写实强、中英文文字渲染准；官方定价 0.1 元/张（2026-05）。"
+    },
+    {
+      "provider": "dashscope",
+      "model": "wanx2.1-t2i-turbo",
+      "protocol": "dashscope-async",
+      "label": "百炼万相 2.1 turbo（性价比）",
+      "price": 0.1,
+      "tag": "生产 · 推荐"
+    },
+    {
+      "provider": "dashscope",
+      "model": "wanx-v1",
+      "protocol": "dashscope-async",
+      "label": "百炼万相 v1",
+      "price": 0.16,
+      "tag": "生产"
+    }
+  ],
+  "video": [
+    {
+      "provider": "none",
+      "model": null,
+      "label": "不生成 B-roll（静轨 Ken Burns）",
+      "price": 0,
+      "tag": "默认 · 口播线"
+    },
+    {
+      "provider": "dashscope",
+      "model": "wanx2.1-i2v-turbo",
+      "protocol": "dashscope-i2v",
+      "label": "百炼图生视频 turbo",
+      "price": 1.5,
+      "tag": "品牌线 · 按镜触发"
+    }
+  ]
+}
