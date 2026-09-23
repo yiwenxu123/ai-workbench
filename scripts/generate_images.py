@@ -241,6 +241,38 @@ def main():
 
     targets = shots[:1] if args.sample_only else shots
 
+    # ── 实拍镜（混剪 M2，D5）：¥0 本地成帧，绝不调任何生图 provider ──
+    # 从 real_clip 素材提取代表帧写 shot_NNN.jpg，让 draft/封面/QC 等一切
+    # 「认图」的下游零改动；帧=剪辑区间中点，人一眼能看到该镜实际画面。
+    try:
+        from real_clip import (real_clip_of, resolve_clip, probe_duration,
+                               clip_span, extract_frame)
+    except ImportError:
+        real_clip_of = None
+    if real_clip_of:
+        keep = []
+        for i, s in enumerate(targets, 1):
+            rc = real_clip_of(s)
+            if not rc:
+                keep.append(s)
+                continue
+            sid = int(s.get("shot_id", i))
+            out_path = os.path.join(out_dir, f"shot_{sid:03d}.jpg")
+            media, why = resolve_clip(rc)
+            native = probe_duration(media) if media else None
+            if media and native:
+                st, du = clip_span(rc, native)
+                if extract_frame(media, st + du / 2, out_path):
+                    vis = s.setdefault("visual", {})
+                    vis["real_clip_frame"] = out_path
+                    print(f"  🎞 镜{sid}: 实拍成帧 {os.path.basename(media)}"
+                          f"（@{(st + du / 2):.1f}s，¥0，不进出图队列）")
+                    continue
+            print(f"  ⚠️ 镜{sid}: 实拍成帧失败（{why or '探针失败'}），"
+                  f"该镜回退生图/占位路径", file=sys.stderr)
+            keep.append(s)
+        targets = keep
+
     # ── 增量重生成（生图占单条成本约 94%，这里最关键）──
     want = None
     if args.shots:

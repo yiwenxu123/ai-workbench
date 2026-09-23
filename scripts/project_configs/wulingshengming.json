@@ -1,0 +1,90 @@
+{
+  "project_id": "wulingshengming",
+  "account": "无龄生命",
+  "domain": "银发经济 + 品质生活",
+  "_note": "内容主平台是公众号图文；视频走视频号/抖音 9:16",
+  "tts": {
+    "provider": "dashscope",
+    "model": "qwen3-tts-flash",
+    "voice_id": "Serena",
+    "speed": 1.0,
+    "_note": "温暖女声（方案 Phase 2.4：无龄生命用非克隆的温暖女声）。未做克隆，先用系统音色",
+    "_alternatives": {
+      "女声备选": {
+        "voice_id": "Cherry"
+      },
+      "克隆女声(待做)": {
+        "model": "cosyvoice-v3.5-flash",
+        "voice_id": "<待复刻>"
+      }
+    }
+  },
+  "image": {
+    "provider": "dashscope",
+    "model": "wanx-v1",
+    "style_preset": "brand_warm",
+    "_note": "wanx-v1 有 500 张免费额度（开发测试阶段首选；0.16元/张）"
+  },
+  "video": {
+    "content_type": "koubo",
+    "platform": "weixin",
+    "aspect_ratio": "9:16",
+    "kenburns": true,
+    "bgm": null,
+    "_note": "视频号竖屏；图文仍走公众号（platform 字段仅决定比例）",
+    "broll": {
+      "mode": "none",
+      "_note": "同上；品牌线若要动态感可改 key",
+      "key_shots": [
+        1,
+        4,
+        10
+      ],
+      "model": "wanx2.1-i2v-turbo",
+      "upload": "my-server:/var/www/yiwenai",
+      "base_url": "https://yiwenai.online"
+    }
+  },
+  "subtitle": {
+    "style": "songti_black_outline",
+    "size": 8,
+    "stroke_width": 0.06,
+    "transform_y": -0.55,
+    "font_size_px": 48
+  },
+  "rules": {
+    "tone": "产业观察者+生活实践者，客观理性兼具人文温度",
+    "audience": "银发经济从业者、关注养老的中青年、政策研究者",
+    "format": [
+      "标题体现「趋势洞察」+「生活真相」双重价值",
+      "开头用一个真实场景或数据引入",
+      "观点必须有数据或权威来源支撑",
+      "至少一个「人本视角」的案例或故事",
+      "结尾给前瞻性判断或行动建议"
+    ],
+    "forbidden": [
+      "不贩卖养老焦虑",
+      "不用「夕阳红」「银发族」等刻板标签",
+      "不做纯学术论述",
+      "避免过度煽情，保持专业客观"
+    ]
+  },
+  "eagle": {
+    "folder": "银发经济",
+    "tags": [
+      "无龄生命",
+      "口播",
+      "AI生成"
+    ]
+  },
+  "test_profile": {
+    "_note": "开发/测试阶段：能免费就免费。生图缺省本地占位图（reuse/pexels 命中的真实素材优先）；也可填有免费额度的便宜图源 provider/model",
+    "tts_provider": "edge",
+    "voice_id": "zh-CN-YunjianNeural",
+    "image_provider": "placeholder",
+    "broll_mode": "none"
+  },
+  "aliases": [
+    "77852w063i191c7"
+  ]
+}

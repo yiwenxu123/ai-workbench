@@ -17,7 +17,7 @@ from typing import Any, Dict, List
 
 VALID_PLATFORM = {"douyin", "xiaohongshu", "weixin", "web", "bilibili"}
 VALID_ASPECT = {"9:16", "3:4", "16:9", "1:1"}
-VALID_VISUAL_TYPE = {"ai_image", "ai_video", "broll", "static_image"}
+VALID_VISUAL_TYPE = {"ai_image", "ai_video", "broll", "static_image", "real_clip"}
 SHOT_LANGUAGE_KEYS = ("shot_size", "focal_length", "depth_of_field",
                       "lighting", "color_temperature", "camera_movement")
 # platform → 期望比例（§4.5 铁律：禁止默认 16:9）
@@ -110,6 +110,12 @@ def shot_scale(shot):
     return max(SUBTITLE_SCALE_MIN, min(SUBTITLE_SCALE_MAX, v))
 
 
+def _real_clip_of(shot):
+    """real_clip 助手不可导入时的纯 dict 兜底（校验器不能被解析层拖崩）"""
+    rc = ((shot or {}).get("visual") or {}).get("real_clip")
+    return rc if isinstance(rc, dict) and (rc.get("path") or rc.get("eagle_id")) else None
+
+
 def validate(sb: Dict[str, Any], require_durations: bool = False) -> List[Dict[str, str]]:
     """
     校验分镜 JSON 是否符合 §2.1 契约。
@@ -199,13 +205,22 @@ def validate(sb: Dict[str, Any], require_durations: bool = False) -> List[Dict[s
             seen_ids.add(sid)
 
         au = shot.get("audio") or {}
+        vis = shot.get("visual") or {}
+        rc_raw = vis.get("real_clip")
+        rc = _real_clip_of(shot)
         text = au.get("text") or shot.get("script_line")
         if not text:
-            err(f"{p}.audio.text", "缺失（且无 script_line 兜底）")
+            # 实拍镜允许无台词（纯实拍段/原声段，混剪 M2）；其余镜维持硬约束
+            (warn if rc else err)(f"{p}.audio.text",
+                                  "缺失（且无 script_line 兜底）" if not rc
+                                  else "缺失（实拍镜可为空台词，仅提醒）")
 
-        if require_durations and not au.get("duration_sec_actual"):
+        if require_durations and not au.get("duration_sec_actual") and not rc:
             err(f"{p}.audio.duration_sec_actual",
                 "缺失——出片前必须回填 TTS 实测时长（§4.2 唯一时间源）")
+        if require_durations and rc and not au.get("duration_sec_actual"):
+            # 实拍镜时间源=画面原生时长（D3），配音时长不适用
+            pass
 
         sc = shot.get("subtitle_scale")
         if sc is not None:
@@ -215,12 +230,45 @@ def validate(sb: Dict[str, Any], require_durations: bool = False) -> List[Dict[s
                      f"建议在 {SUBTITLE_SCALE_MIN}~{SUBTITLE_SCALE_MAX} 之间，"
                      f"实际 {sc}（超界会被钳制）")
 
-        vis = shot.get("visual") or {}
         vtype = vis.get("type")
         if vtype and vtype not in VALID_VISUAL_TYPE:
             warn(f"{p}.visual.type", f"未知类型 {vtype!r}，合法值 {sorted(VALID_VISUAL_TYPE)}")
         if not vis.get("prompt") and vtype in ("ai_image", "ai_video"):
             warn(f"{p}.visual.prompt", f"{vtype} 建议提供 prompt")
+
+        # 实拍片段契约（混剪 M2，D2 一镜一段）：对象、path/eagle_id 至少其一、start<end
+        if rc_raw is not None:
+            if not isinstance(rc_raw, dict):
+                err(f"{p}.visual.real_clip", "必须是对象 {path|eagle_id, start?, end?}")
+            else:
+                if not (rc_raw.get("path") or rc_raw.get("eagle_id")):
+                    err(f"{p}.visual.real_clip", "必须有 path 或 eagle_id（素材定位）")
+                sv, ev = rc_raw.get("start"), rc_raw.get("end")
+                bad = False
+                for tag, v in (("start", sv), ("end", ev)):
+                    if v is None:
+                        continue
+                    try:
+                        if float(v) < 0:
+                            bad = True
+                    except (TypeError, ValueError):
+                        bad = True
+                    if bad:
+                        err(f"{p}.visual.real_clip.{tag}", f"必须为 ≥0 的秒数，实际 {v!r}")
+                        break
+                if not bad and sv is not None and ev is not None and float(ev) <= float(sv):
+                    err(f"{p}.visual.real_clip.end", f"end({ev}) 必须大于 start({sv})")
+                if not bad and (rc_raw.get("path") or rc_raw.get("eagle_id")):
+                    try:
+                        from real_clip import resolve_clip, probe_duration
+                        media, why = resolve_clip(rc_raw)
+                        if not media:
+                            # Eagle 离线不等于数据错误 → warn 不阻断闸（装配/QC 侧硬失败）
+                            warn(f"{p}.visual.real_clip", f"素材暂无法定位：{why}")
+                        elif probe_duration(media) is None:
+                            warn(f"{p}.visual.real_clip", f"{media} 探针失败（非视频文件？）")
+                    except ImportError:
+                        pass
 
         sl = vis.get("shot_language")
         if sl is None:

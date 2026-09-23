@@ -1,0 +1,38 @@
+{
+  "_version": 1,
+  "_note": "封面/标题包模板（v5.1 P2-2）。引擎按本表做两件事：① 给每镜台词打「钩子分」以优选封面帧；② 生成标题 A/B 候选的**兜底**（真相源优先级：out_dir/cover_titles.json（agent 用 LLM 写）> 本表模板）。改本文件即可调整打分口径与模板文案，无需改 Python。",
+
+  "hook": {
+    "_note": "信号表：pattern 命中即加权；length_ok 按字数区间加权。权重高的信号更可能是「钩子」（开头抓人的那句）。",
+    "signals": [
+      { "id": "contrast", "weight": 3, "label": "含反差/悬念", "pattern": "其实|竟然|居然|没想到|真相|秘密|误区|颠覆|反而|并不是|不一定|居然还" },
+      { "id": "digit", "weight": 2, "label": "含数字", "pattern": "\\d" },
+      { "id": "question", "weight": 2, "label": "含疑问", "pattern": "[？?]|为什么|怎么|如何|是不是|到底|吗" },
+      { "id": "authority", "weight": 1, "label": "含权威/专业", "pattern": "研究|科学|专家|考古|实验|数据|证明|发现" },
+      { "id": "second_person", "weight": 1, "label": "对话感", "pattern": "你|咱|大家" },
+      { "id": "length_ok", "weight": 1, "label": "长度适中", "min_chars": 8, "max_chars": 60 }
+    ]
+  },
+
+  "templates": {
+    "_note": "标题候选兜底模板。可用占位符：{hook_short} 钩子台词截断 / {payoff_short} 末镜落点句截断 / {title} 视频标题 / {keyword} 标题核心词（抽不出则为空）/ {number} 首个数字（无则用镜数）/ {shot_count} 镜数。**含占位符但该变量为空的模板会被自动跳过**，故列表按「先具体后兜底」排序即可——没有标题时自动落到 3/4/5/8/9 这几条。",
+    "max_chars": 20,
+    "items": [
+      { "style": "疑问式", "pattern": "{keyword}到底是怎么回事？" },
+      { "style": "数字式", "pattern": "{number}个关于{keyword}的真相" },
+      { "style": "悬念式", "pattern": "{hook_short}" },
+      { "style": "结论式", "pattern": "{payoff_short}" },
+      { "style": "引导式", "pattern": "别划走，{hook_short}" },
+      { "style": "利益式", "pattern": "看懂{keyword}，这一条就够了" },
+      { "style": "反差式", "pattern": "{keyword}，和你想的完全不一样" },
+      { "style": "清单式", "pattern": "{number}个关键细节，一次讲清" },
+      { "style": "提问式", "pattern": "{hook_short}，你知道吗？" }
+    ]
+  },
+
+  "stopwords": [
+    "的", "了", "是", "就", "在", "和", "都", "这", "那", "也", "很", "一个",
+    "我们", "你们", "他们", "它", "与", "把", "被", "会", "要", "有", "没有",
+    "什么", "自己", "这样", "那么", "到底", "怎么", "为什么", "如何"
+  ]
+}

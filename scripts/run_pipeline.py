@@ -257,7 +257,7 @@ def main():
             notes.append("默认跳过 " + ",".join(cprofile["skip_stages"]))
         notes.append("配音" + ("有" if expect_voiceover else "无")
                      + " / 字幕" + ("有" if expect_subtitles else "无"))
-        if cprofile.get("image_policy") == "reuse_first":
+        if cprofile.get("image_policy") in ("reuse_first", "clip_first"):
             notes.append("素材=复用优先")
         if cprofile.get("aspect_ratio"):
             notes.append(f"建议比例 {cprofile['aspect_ratio']}")
@@ -343,7 +343,7 @@ def main():
     # image_policy=reuse_first 时把生图档换成占位图（¥0）：Eagle/Pexels 命中的真实素材
     # 照常优先复用，只有都没命中的镜留占位，人再在剪映里替换。
     # 只在**命令行没显式 --image-provider** 时生效 —— 明确要 AI 生图就直说，别被悄悄覆盖。
-    if cprofile.get("image_policy") == "reuse_first" and not cli_image_provider:
+    if cprofile.get("image_policy") in ("reuse_first", "clip_first") and not cli_image_provider:
         args.image_provider = "placeholder"
         print(f"🎞 类型={cprofile.get('label') or content_type}：素材策略=复用优先"
               f"（Eagle/Pexels 命中先用；缺镜出占位图 ¥0，请在剪映内替换为实拍素材）；"

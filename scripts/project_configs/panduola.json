@@ -1,0 +1,95 @@
+{
+  "project_id": "panduola",
+  "account": "潘哆啦",
+  "domain": "历史文化 + 猎奇",
+  "tts": {
+    "provider": "dashscope",
+    "model": "cosyvoice-v3.5-flash",
+    "voice_id": "cosyvoice-v3.5-flash-pd35f-b10ec0abc6b84ab999c7b6e6589bc137",
+    "speed": 1.0,
+    "_note": "克隆音色（本人音色），0.8元/万字符；走 WebSocket",
+    "_alternatives": {
+      "更高质量": {
+        "model": "cosyvoice-v3.5-plus",
+        "voice_id": "cosyvoice-v3.5-plus-pd35p-25192ef97d7b4a948ef440593f45a9e2"
+      },
+      "零成本评测": {
+        "provider": "edge",
+        "model": null,
+        "voice_id": "zh-CN-YunjianNeural"
+      },
+      "系统音色": {
+        "model": "qwen3-tts-flash",
+        "voice_id": "Ethan"
+      }
+    }
+  },
+  "image": {
+    "provider": "dashscope",
+    "model": "wanx-v1",
+    "style_preset": "warm_humanities",
+    "_note": "wanx-v1 有 500 张免费额度（开发测试阶段首选；0.16元/张）"
+  },
+  "video": {
+    "content_type": "koubo",
+    "platform": "douyin",
+    "aspect_ratio": "9:16",
+    "kenburns": true,
+    "bgm": null,
+    "_note": "视频走 9:16（抖音/视频号）；图文另走 3:4（小红书）",
+    "broll": {
+      "mode": "none",
+      "_note": "默认关闭（视频比生图贵一个数量级）。改为 key 则只给关键镜生成；改为 all 则每镜都生成",
+      "key_shots": [
+        1,
+        2,
+        10,
+        11
+      ],
+      "model": "wanx2.1-i2v-turbo",
+      "upload": "my-server:/var/www/yiwenai",
+      "base_url": "https://yiwenai.online"
+    }
+  },
+  "subtitle": {
+    "style": "songti_black_outline",
+    "size": 8,
+    "stroke_width": 0.06,
+    "transform_y": -0.55,
+    "font_size_px": 48,
+    "_note": "两通道共用；剪映侧由 generate_draft 注入顶层 border_* 字段"
+  },
+  "rules": {
+    "tone": "轻松有趣、接地气的历史八卦分享者，像朋友聊天讲古",
+    "format": [
+      "标题必须有猎奇钩子（数字/反差/疑问/揭秘）",
+      "视频前3秒必须抛出最抓人的点",
+      "每个知识点配一个「原来如此」的反转",
+      "结尾留悬念或互动问题"
+    ],
+    "forbidden": [
+      "不用学术论文式叙述",
+      "不做干巴巴的编年史",
+      "不歪曲史实，猎奇但必须严谨"
+    ]
+  },
+  "eagle": {
+    "folder": "历史文化",
+    "tags": [
+      "潘哆啦",
+      "口播",
+      "AI生成"
+    ]
+  },
+  "test_profile": {
+    "_note": "开发/测试阶段：能免费就免费。生图缺省本地占位图（reuse/pexels 命中的真实素材优先）；也可填有免费额度的便宜图源 provider/model",
+    "tts_provider": "edge",
+    "voice_id": "zh-CN-YunjianNeural",
+    "broll_mode": "none",
+    "image_provider": "placeholder"
+  },
+  "aliases": [
+    "5hfgq183937ez71",
+    "i2z41cnjrz0m0s5"
+  ]
+}
