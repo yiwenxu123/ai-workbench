@@ -6,7 +6,9 @@
     先查 Eagle → 命中就复用（¥0）→ 没命中才生图 → 生完入库
 
 匹配方式（为什么不用向量/AI）：
-  - 库内规模小（每项目几十~几百条），`item/list` 一次能拿全
+  - 库内规模小（每项目几十~几百条），**大 limit 一次取全**
+    （实测 Eagle v4：`item/list` 默认截断 200 条；且 `offset` 是"整库偏移、
+    页内再截断"的错乱语义，offset 翻页必漏检——禁用 offset）
   - annotation 里已存**完整 prompt + 台词**，信息量足够
   - 用**中文字符 bigram Jaccard 相似度**做打分：零依赖、零成本、可解释
   - 阈值可调（默认 0.50），并可要求 tags 必须同项目/同风格
@@ -95,8 +97,14 @@ def main():
 
     api = get_api()
     folder_id = api.get_or_create_folder(folder_name)
-    items = api.list_items(folders=folder_id)
+    # 实测 Eagle v4：默认截断 200 条（静默漏检），显式大 limit 才取全；
+    # offset 语义错乱不可用于翻页 → 取满容量即告警，而不是假装能翻页。
+    fetch_limit = 5000
+    items = api._get(f"item/list?folders={folder_id}&limit={fetch_limit}&offset=0").get("data") or []
     print(f"🔎 检索文件夹「{folder_name}」共 {len(items)} 条素材，阈值 {args.threshold}")
+    if len(items) >= fetch_limit:
+        print(f"⚠️  素材数达单次取回上限 {fetch_limit}，检索可能不完整，请按标签拆文件夹",
+              file=sys.stderr)
 
     reused, miss = 0, 0
     try:
