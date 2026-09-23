@@ -7,9 +7,62 @@
 import argparse
 import json
 import os
+import shutil
 import sys
 
 import pyJianYingDraft as draft
+
+
+def build_native_bed(shots, vo_dir, work_dir):
+    """
+    A4 草稿通道：real_clip 镜素材含音轨时，产出与整片逐镜对齐的**原声垫轨**。
+    与 assemble_video 共享 real_clip.build_aligned_track（bed 模式）：
+    有配音的镜只出"被配音 key duck 过的原声"（配音本身留在 voice_all 轨，避免双份），
+    无配音的实拍镜原声顶上，其余镜静音占位保对齐。
+
+    返回 real_segs：{shot_id -> (media, start, cdur)}。real_clip 镜的画面轨直接挂
+    **视频片段**（入出点用 source_timerange），否则画面停在抽帧静帧、原声却在动，
+    观感/时间源都割裂。无任何 real_clip 时返回 {}，草稿保持原样（零变化）。
+    """
+    from real_clip import (real_clip_of, resolve_clip, probe_duration,
+                           clip_span, probe_has_audio, build_aligned_track)
+    shot_audio, real_segs = [], {}
+    for pos, shot in enumerate(shots, 1):
+        sid = shot.get("shot_id", pos)
+        au = shot.get("audio") or {}
+        vis = shot.get("visual") or {}
+        dur = (au.get("duration_sec_actual") or au.get("duration_sec")
+               or vis.get("duration_sec_estimate") or shot.get("duration_sec") or 3.0)
+        native = None
+        rc = real_clip_of(shot)
+        if rc:
+            media, why = resolve_clip(rc)
+            nd = probe_duration(media) if media else 0
+            if media and nd:
+                start, cdur = clip_span(rc, nd)
+                dur = cdur  # 实拍镜时长=画面原生（D3，与装配轨同一时间源）
+                real_segs[sid] = (media, start, cdur)
+                if probe_has_audio(media):
+                    native = (media, start)
+            else:
+                print(f"⚠️  镜{sid}: 实拍素材未定位（{why or '探针失败'}），草稿回退静帧"
+                      f"（real_clip 不循环，缺素材即无画面）", file=sys.stderr)
+        vo = None
+        if vo_dir:
+            for cand in (f"shot_{sid:03d}.mp3", f"shot_{pos:03d}.mp3",
+                         f"shot_{sid:03d}.wav"):
+                p = os.path.join(vo_dir, cand)
+                if os.path.exists(p):
+                    vo = p
+                    break
+        shot_audio.append({"dur": float(dur), "native": native, "vo": vo})
+    if not any(s["native"] for s in shot_audio):
+        return None, real_segs   # 无原声可用：不产垫轨，但画面段仍要挂实拍
+    n_native = sum(1 for s in shot_audio if s["native"])
+    n_duck = sum(1 for s in shot_audio if s["native"] and s["vo"])
+    print(f"🔊 A4 草稿原声垫轨：{n_native} 镜原声入线（其中 {n_duck} 镜按配音 ducking）")
+    return build_aligned_track(shot_audio, work_dir, "bed", "native_mix.m4a"), real_segs
+
 
 
 def create_draft(
@@ -20,6 +73,8 @@ def create_draft(
     shots: list,
     images_dir: str,
     aspect_ratio: str = "9:16",
+    native_mix: str = None,
+    real_segs: dict = None,
 ):
     """
     创建剪映草稿（画布比例随项目走，不再写死 9:16）
@@ -50,6 +105,19 @@ def create_draft(
         script.add_segment(audio_segment, track=audio_track_ref)
         print(f"✅ 音频已添加: {audio_path}（{duration_us/1_000_000:.1f}s）")
 
+    # 2.5 A4 原声垫轨：逐镜对齐的混音带（ducking 已在带内烘焙），独立音频轨、
+    # 音量略降留剪映手动余量；无实拍原声时 native_mix=None，本段整体跳过。
+    if native_mix and os.path.exists(native_mix):
+        bed_material = draft.AudioMaterial(native_mix)
+        script.add_material(bed_material)
+        bed_dur_us = bed_material.duration
+        bed_segment = draft.AudioSegment(bed_material, draft.Timerange(0, bed_dur_us),
+                                         volume=0.8)
+        bed_track_ref = script.append_track(draft.TrackSpec(draft.TrackType.audio,
+                                                            name="原声垫轨"))
+        script.add_segment(bed_segment, track=bed_track_ref)
+        print(f"✅ 原声垫轨已添加（{bed_dur_us/1_000_000:.1f}s，volume=0.8）")
+
     # 3. 添加视频轨（图片素材作为视频片段）
     if shots and os.path.exists(images_dir):
         video_track_ref = script.append_track(draft.TrackSpec(draft.TrackType.video))
@@ -67,6 +135,27 @@ def create_draft(
             duration_sec = float(duration_sec)
             duration_us = int(duration_sec * 1_000_000)
             image_path = os.path.join(images_dir, f"shot_{shot_index:03d}.jpg")
+
+            # A4/M2：real_clip 镜画面轨挂**真视频段**（入出点 source_timerange）。
+            # 素材静音（volume=0）：原声由垫轨轨统一承担，避免双份。
+            seg = (real_segs or {}).get(shot_index)
+            if seg:
+                media, src_start, cdur = seg
+                duration_us = int(cdur * 1_000_000)
+                v_material = draft.VideoMaterial(media)
+                script.add_material(v_material)
+                v_segment = draft.VideoSegment(
+                    v_material,
+                    draft.Timerange(current_time_us, duration_us),
+                    source_timerange=draft.Timerange(int(src_start * 1_000_000), duration_us),
+                    volume=0.0,
+                    clip_settings=draft.ClipSettings(alpha=1.0),
+                )
+                script.add_segment(v_segment, track=video_track_ref)
+                print(f"  镜头 {shot_index}: 实拍 {os.path.basename(media)}"
+                      f"（{src_start:.1f}s–{src_start+cdur:.1f}s，静音由垫轨承担）")
+                current_time_us += duration_us
+                continue
 
             if os.path.exists(image_path):
                 video_material = draft.VideoMaterial(image_path)
@@ -221,6 +310,12 @@ def main():
                              "默认取分镜，再取项目配置")
     parser.add_argument("--no-subtitle-style", action="store_true",
                         help="不注入账号字幕样式（保留剪映默认无描边样式）")
+    parser.add_argument("--vo-dir",
+                        help="逐镜配音目录（含 shot_NNN.mp3），A4 原声 ducking 的 key 来源")
+    parser.add_argument("--no-native-audio", action="store_true",
+                        help="A4 关闭实拍原声垫轨")
+    parser.add_argument("--out-dir",
+                        help="把原声垫轨另存一份到该目录（产物留档，便于复查）")
     args = parser.parse_args()
 
     draft_root = os.path.expanduser(args.draft_root)
@@ -238,6 +333,27 @@ def main():
         print(f"📋 分镜: {len(shots)} 个镜头")
 
     images_dir = os.path.expanduser(args.images_dir) if args.images_dir else None
+
+    # A4 原声垫轨（含实拍镜才产出；纯口播/无 real_clip → (None, {}) 草稿零变化）
+    native_mix, real_segs = None, {}
+    if shots and not args.no_native_audio:
+        import tempfile
+        work = tempfile.mkdtemp(prefix="draft_a4_")
+        try:
+            native_mix, real_segs = build_native_bed(
+                shots, os.path.expanduser(args.vo_dir) if args.vo_dir else None, work)
+            # 临时目录随后即删：草稿引用**留档件**，非临时件
+            if native_mix and args.out_dir:
+                os.makedirs(os.path.expanduser(args.out_dir), exist_ok=True)
+                keep = os.path.join(os.path.expanduser(args.out_dir), "native_mix.m4a")
+                shutil.copyfile(native_mix, keep)
+                native_mix = keep
+                print(f"📀 原声垫轨留档: {keep}")
+        except RuntimeError as e:
+            print(f"❌ A4 原声垫轨生成失败: {e}", file=sys.stderr)
+            raise SystemExit(1)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
 
     # 画布比例：命令行 > 分镜 > 项目配置 > 默认 9:16
     ar = args.aspect_ratio or (storyboard or {}).get("aspect_ratio")
@@ -260,6 +376,8 @@ def main():
         srt_path=srt_path,
         shots=shots,
         images_dir=images_dir,
+        native_mix=native_mix,
+        real_segs=real_segs,
     )
 
     # 后处理：注入账号字幕样式（pyJD 不支持描边，故在明文 JSON 上改写）

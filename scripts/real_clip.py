@@ -166,3 +166,78 @@ if __name__ == "__main__":
         print(f"resolved={p} reason={why}")
         if p:
             print(f"duration={probe_duration(p)}")
+
+
+def probe_has_audio(path):
+    """素材是否含音频流（A4：无声实拍镜按静音镜处理，不炸混音）。"""
+    try:
+        out = subprocess.run(
+            [FFPROBE, "-v", "quiet", "-select_streams", "a",
+             "-show_entries", "stream=codec_type", "-of", "csv=p=0", path],
+            capture_output=True, text=True, timeout=15).stdout
+        return "audio" in out
+    except Exception:
+        return False
+
+
+def build_aligned_track(shot_audio, work, mode, out_name):
+    """
+    A4 共享底座（assemble_video 与 generate_draft 同一条混音带）：
+    每镜产出一段**严格等于该镜时长**的音频再 concat，保证与视频轨逐镜对齐。
+      mode="assemble"：配音+原声 → amix(配音为主, 原声 sidechain ducking)；
+                       只有原声 → 原声顶上；只有配音 → 配音钳到镜时长；都无 → 静音。
+      mode="bed"：    配音+原声 → 只出**被配音 key  duck 过的原声**（剪映里配音轨在
+                       独立音轨上，垫轨只担原声职责，避免配音双份叠音）；其余同上。
+    返回拼接后的音频路径；全片无任何可发声来源时返回 None。
+    """
+    if not any(s["native"] or s["vo"] for s in shot_audio):
+        return None
+    enc = ["-ar", "44100", "-ac", "2", "-c:a", "aac", "-b:a", "160k"]
+    seg_paths = []
+    for idx, s in enumerate(shot_audio, 1):
+        dur = float(s["dur"])
+        seg = os.path.join(work, f"a4_{mode}_{idx:03d}.m4a")
+        native, vo = s["native"], s["vo"]
+        if native and vo:
+            media, start = native
+            if mode == "bed":
+                # 垫轨只担原声职责：vo 整个作 sidechain key，无需 asplit 分流
+                fc = (f"[0:a]volume=0.9[nat];"
+                      f"[nat][1:a]sidechaincompress=threshold=0.03:ratio=8:"
+                      f"attack=20:release=350[natd];"
+                      f"[natd]apad,atrim=0:{dur:.3f}[a]")
+            else:
+                fc = (f"[1:a]asplit=2[vom][vok];"
+                      f"[0:a]volume=0.9[nat];"
+                      f"[nat][vok]sidechaincompress=threshold=0.03:ratio=8:"
+                      f"attack=20:release=350[natd];"
+                      f"[vom][natd]amix=inputs=2:normalize=0[amix];"
+                      f"[amix]apad,atrim=0:{dur:.3f}[a]")
+            _run_ff(["-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", media,
+                     "-i", vo, "-filter_complex", fc, "-map", "[a]"], enc, seg)
+        elif native:
+            media, start = native
+            _run_ff(["-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", media,
+                     "-vn", "-af", f"apad,atrim=0:{dur:.3f}"], enc, seg)
+        elif vo:
+            _run_ff(["-i", vo, "-af", f"apad,atrim=0:{dur:.3f}"], enc, seg)
+        else:
+            _run_ff(["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                     "-t", f"{dur:.3f}"], enc, seg)
+        seg_paths.append(seg)
+    lst = os.path.join(work, f"a4list_{mode}.txt")
+    with open(lst, "w") as f:
+        for pth in seg_paths:
+            f.write(f"file '{pth}'\n")
+    out = os.path.join(work, out_name)
+    _run_ff(["-f", "concat", "-safe", "0", "-i", lst],
+            ["-c:a", "aac", "-ar", "44100", "-ac", "2"], out)
+    return out
+
+
+def _run_ff(in_args, enc, out):
+    r = subprocess.run([FFMPEG, "-y", "-loglevel", "error", *in_args, *enc, out],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"ffmpeg 失败: {r.stderr[-300:]}")
+    return out

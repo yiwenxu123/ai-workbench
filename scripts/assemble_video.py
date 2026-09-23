@@ -194,53 +194,15 @@ def probe_has_audio(path):
 
 def build_aligned_voice(shot_audio, work):
     """
-    A4：分镜级时间轴对齐音频轨。每镜产出一段**严格等于该镜时长**的音频再拼接，
-    保证与 concat 后的视频轨逐镜对齐（画面是时间源，音频贴画面）。
-      - 配音 + 原声 → 配音为主轨，原声经 sidechaincompress 自动 ducking 垫底
-      - 只有原声   → 原声顶上（消灭 mixcut 无声镜）
-      - 只有配音   → 配音钳制到镜时长
-      - 都没有     → 静音填充保对齐
-    返回 voice.m4a 路径；全片无任何可发声来源时返回 None。
+    A4：分镜级时间轴对齐音频轨。混音底座在 real_clip.build_aligned_track
+    （与 generate_draft 的剪映垫轨共享，保证两条通道同一套 ducking 参数）。
     """
-    if not any(s["native"] or s["vo"] for s in shot_audio):
-        return None
-    enc = ["-ar", "44100", "-ac", "2", "-c:a", "aac", "-b:a", "160k"]
-    seg_paths = []
-    for idx, s in enumerate(shot_audio, 1):
-        dur = float(s["dur"])
-        seg = os.path.join(work, f"avo_{idx:03d}.m4a")
-        native, vo = s["native"], s["vo"]
-        if native and vo:
-            media, start = native
-            fc = (f"[1:a]asplit=2[vom][vok];"
-                  f"[0:a]volume=0.9[nat];"
-                  f"[nat][vok]sidechaincompress=threshold=0.03:ratio=8:"
-                  f"attack=20:release=350[natd];"
-                  f"[vom][natd]amix=inputs=2:normalize=0[amix];"
-                  f"[amix]apad,atrim=0:{dur:.3f}[a]")
-            run([FFMPEG, "-y", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}",
-                 "-i", media, "-i", vo, "-filter_complex", fc,
-                 "-map", "[a]", *enc, seg], f"镜{idx} 混音(原声duck+配音)")
-        elif native:
-            media, start = native
-            run([FFMPEG, "-y", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", media,
-                 "-vn", "-af", f"apad,atrim=0:{dur:.3f}", *enc, seg], f"镜{idx} 原声")
-        elif vo:
-            run([FFMPEG, "-y", "-i", vo, "-af", f"apad,atrim=0:{dur:.3f}",
-                 *enc, seg], f"镜{idx} 配音")
-        else:
-            run([FFMPEG, "-y", "-f", "lavfi",
-                 "-i", "anullsrc=r=44100:cl=stereo", "-t", f"{dur:.3f}",
-                 *enc, seg], f"镜{idx} 静音")
-        seg_paths.append(seg)
-    lst = os.path.join(work, "avlist.txt")
-    with open(lst, "w") as f:
-        for p in seg_paths:
-            f.write(f"file '{p}'\n")
-    voice = os.path.join(work, "voice.m4a")
-    run([FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", lst,
-         "-c:a", "aac", "-ar", "44100", "-ac", "2", voice], "时间轴音频轨拼接")
-    return voice
+    from real_clip import build_aligned_track
+    try:
+        return build_aligned_track(shot_audio, work, "assemble", "voice.m4a")
+    except RuntimeError as e:
+        print(f"❌ A4 逐镜混音失败: {e}", file=sys.stderr)
+        raise SystemExit(1)
 
 
 def plan_intervals(shot_start, shot_end, entries, tol=0.02):

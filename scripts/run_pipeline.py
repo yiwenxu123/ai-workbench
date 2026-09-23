@@ -778,7 +778,9 @@ def main():
             "generate_draft.py", "--draft-name", draft_name,
             "--audio", voice_all,
             "--srt", srt_path, "--storyboard", sb_path,
-            "--images-dir", img_dir))
+            "--images-dir", img_dir,
+            # A4：逐镜配音目录作 ducking key，有实拍原声才产垫轨；留档到 out
+            "--vo-dir", vo_dir, "--out-dir", out))
         report("draft", draftName=draft_name, draftPath=draft_name)
 
     if "video" in stages:
