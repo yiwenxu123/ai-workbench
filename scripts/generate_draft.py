@@ -13,6 +13,83 @@ import sys
 import pyJianYingDraft as draft
 
 
+# ── A2 草稿观感：运镜 / 镜间转场 / 字幕入场 ──────────────────────────
+
+def _resolve_enum(cls, name, what):
+    """按中文名取剪映动效枚举；名字不对就退回「不加」并提示（不猜同名近似的）。"""
+    name = str(name or "").strip()
+    if not name:
+        return None
+    hit = next((m for m in cls if m.name == name), None)
+    if hit is None:
+        print(f"⚠️  未知{what}「{name}」，该项不加"
+              f"（可选如：{'、'.join(m.name for m in list(cls)[:6])}…）", file=sys.stderr)
+    return hit
+
+
+def apply_ken_burns(seg, duration_us, pos, style):
+    """给**图片静帧镜**加缩放+横漂关键帧（实拍视频镜本身在动，不加）。
+
+    推拉方向逐镜交替；关键点是「缩回到 1.0 的那一刻横移也归 0」，
+    否则原尺寸下横移会露出黑边。
+    """
+    scale = max(1.0, float(style.get("kb_scale") or 1.0))
+    pan = abs(float(style.get("kb_pan") or 0.0))
+    if not style.get("ken_burns", True):
+        return False
+    if scale <= 1.001 and pan <= 0.001:
+        return False
+    zoom_in = pos % 2 == 0
+    lo, hi = 1.0, scale
+    seg.add_keyframe(draft.KeyframeProperty.uniform_scale, 0, lo if zoom_in else hi)
+    seg.add_keyframe(draft.KeyframeProperty.uniform_scale, duration_us,
+                     hi if zoom_in else lo)
+    if pan > 0.001:
+        drift = pan * (1 if pos % 4 < 2 else -1)
+        seg.add_keyframe(draft.KeyframeProperty.position_x, 0, 0.0 if zoom_in else drift)
+        seg.add_keyframe(draft.KeyframeProperty.position_x,
+                         duration_us, drift if zoom_in else 0.0)
+    return True
+
+
+def apply_transition(seg, duration_us, style):
+    """镜间叠化：转场挂在**后一个镜**上（剪映语义＝该段的入点转场）。"""
+    tr = _resolve_enum(draft.TransitionType, style.get("transition"), "转场")
+    if tr is None:
+        return False
+    want = int(float(style.get("transition_sec") or 0.3) * 1_000_000)
+    # 不超过该镜时长的 1/3，且至少 0.1s，否则短镜会被转场吃掉大半
+    span = min(want, int(duration_us / 3))
+    if span < 100_000:
+        return False
+    seg.add_transition(tr, duration=span)
+    return True
+
+
+def apply_subtitle_intro(script, style):
+    """给 import_srt 生成的字幕段加入场动画。
+
+    坑（实测）：pyJD 只在 `add_segment()` 时把段上的动画登记进 materials，
+    而 `import_srt` 是直接把段塞进轨道的 —— 之后补的动画不会自动出现在
+    `material_animations` 里，必须照 add_segment 的做法自己登记一次。
+    """
+    intro = _resolve_enum(draft.TextIntro, style.get("subtitle_intro"), "字幕入场动画")
+    if intro is None:
+        return 0
+    sec = float(style.get("subtitle_intro_sec") or 0.25)
+    done = 0
+    for track in script.tracks.values():
+        for seg in getattr(track, "segments", []):
+            if not isinstance(seg, draft.TextSegment):
+                continue
+            seg.add_animation(intro, int(sec * 1_000_000))
+            inst = seg.animations_instance
+            if inst is not None and inst not in script.materials.animations:
+                script.materials.animations.append(inst)
+                done += 1
+    return done
+
+
 def build_native_bed(shots, vo_dir, work_dir):
     """
     A4 草稿通道：real_clip 镜素材含音轨时，产出与整片逐镜对齐的**原声垫轨**。
@@ -75,10 +152,20 @@ def create_draft(
     aspect_ratio: str = "9:16",
     native_mix: str = None,
     real_segs: dict = None,
+    motion: dict = None,
 ):
     """
     创建剪映草稿（画布比例随项目走，不再写死 9:16）
+
+    motion=None 时按账号观感契约取默认（storyboard_schema.motion_style）；
+    传 `{"ken_burns": False, "transition": "", "subtitle_intro": ""}` 即完全不加动效。
     """
+    try:
+        from storyboard_schema import motion_style as _motion_style
+        mo = motion if motion is not None else _motion_style({})
+    except ImportError:
+        mo = {"ken_burns": False, "transition": "", "subtitle_intro": ""}
+
     # 1. 创建草稿文件夹
     draft_folder = draft.DraftFolder(draft_root)
     if draft_folder.has_draft(draft_name):
@@ -119,6 +206,7 @@ def create_draft(
         print(f"✅ 原声垫轨已添加（{bed_dur_us/1_000_000:.1f}s，volume=0.8）")
 
     # 3. 添加视频轨（图片素材作为视频片段）
+    n_kb = n_tr = n_seg = 0
     if shots and os.path.exists(images_dir):
         video_track_ref = script.append_track(draft.TrackSpec(draft.TrackType.video))
 
@@ -151,7 +239,12 @@ def create_draft(
                     volume=0.0,
                     clip_settings=draft.ClipSettings(alpha=1.0),
                 )
+                # A2：实拍镜画面本身在动，只补镜间转场、不加运镜关键帧
+                # （转场只加在"前面已有画面段"之后 —— 首段加转场等于凭空叠黑）
+                if n_seg and apply_transition(v_segment, duration_us, mo):
+                    n_tr += 1
                 script.add_segment(v_segment, track=video_track_ref)
+                n_seg += 1
                 print(f"  镜头 {shot_index}: 实拍 {os.path.basename(media)}"
                       f"（{src_start:.1f}s–{src_start+cdur:.1f}s，静音由垫轨承担）")
                 current_time_us += duration_us
@@ -167,7 +260,14 @@ def create_draft(
                     draft.Timerange(current_time_us, duration_us),
                     clip_settings=draft.ClipSettings(alpha=1.0),
                 )
+                # A2：静帧镜加运镜（Ken Burns）+ 镜间转场 —— 必须在 add_segment 之前，
+                # pyJD 是在 add_segment 时才把关键帧/转场登记进素材表。
+                if apply_ken_burns(video_segment, duration_us, pos, mo):
+                    n_kb += 1
+                if n_seg and apply_transition(video_segment, duration_us, mo):
+                    n_tr += 1
                 script.add_segment(video_segment, track=video_track_ref)
+                n_seg += 1
                 print(f"  镜头 {shot_index}: {image_path}（{duration_sec}s）")
             else:
                 print(f"  ⚠️  图片不存在: {image_path}")
@@ -175,12 +275,20 @@ def create_draft(
             current_time_us += duration_us
 
     # 4. 导入 SRT 字幕
+    n_intro = 0
     if os.path.exists(srt_path):
         try:
             script.import_srt(srt_path, track_name="字幕轨")
-            print(f"✅ 字幕已导入: {srt_path}")
+            n_intro = apply_subtitle_intro(script, mo)
+            print(f"✅ 字幕已导入: {srt_path}"
+                  + (f"（{n_intro} 条带「{mo.get('subtitle_intro')}」入场）" if n_intro else ""))
         except Exception as e:
             print(f"⚠️  字幕导入失败: {e}")
+
+    if n_kb or n_tr:
+        print(f"🎬 A2 观感: {n_kb} 镜运镜（Ken Burns 缩放 {mo.get('kb_scale')} / "
+              f"横漂 {mo.get('kb_pan')}），{n_tr} 处镜间转场"
+              f"「{mo.get('transition')}」{mo.get('transition_sec')}s")
 
     # 5. 保存草稿
     script.save()
@@ -236,8 +344,21 @@ def apply_subtitle_style(draft_dir: str, storyboard: dict) -> int:
         data = _json.load(f)
 
     shots = (storyboard or {}).get("shots") or []
+    # A1 之后一镜可能对应多条字幕（镜内按词边界断句），**不能再按序号 1:1 对镜**。
+    # 字幕文本必是所在镜台词的子串，且顺序单调 → 用游标往前找即可确定归属。
+    import re as _re
+
+    def _norm(s):
+        return _re.sub(r"[\s\W_]+", "", s or "", flags=_re.UNICODE)
+
+    def _shot_text(sh):
+        au = sh.get("audio") or {}
+        return au.get("text") or sh.get("script_line") or ""
+
+    shot_norm = [_norm(_shot_text(sh)) for sh in shots]
+    cur = 0
     patched = 0
-    for idx, t in enumerate((data.get("materials") or {}).get("texts", [])):
+    for t in (data.get("materials") or {}).get("texts", []):
         raw = t.get("content")
         if not raw:
             continue
@@ -245,8 +366,16 @@ def apply_subtitle_style(draft_dir: str, storyboard: dict) -> int:
             c = _json.loads(raw)
         except Exception:
             continue
-        # 逐镜字幕倍率（AI 可主动调整）：SRT 条目顺序 ↔ 分镜顺序
-        sc = _scale(shots[idx]) if idx < len(shots) else 1.0
+        seg = _norm(c.get("text") or "")
+        j = cur
+        while j < len(shot_norm) and (not seg or seg not in shot_norm[j]):
+            j += 1
+        if j >= len(shot_norm):
+            j = min(cur, len(shots) - 1)   # 对不上就沿用当前镜，不猜
+        else:
+            cur = j
+        # 逐镜字幕倍率（AI 可主动调整）：按字幕所属镜取
+        sc = _scale(shots[j]) if shots else 1.0
         size = round(float(st["size"]) * sc, 2)
         for s in c.get("styles", []):
             s["size"] = size
@@ -316,6 +445,8 @@ def main():
                         help="A4 关闭实拍原声垫轨")
     parser.add_argument("--out-dir",
                         help="把原声垫轨另存一份到该目录（产物留档，便于复查）")
+    parser.add_argument("--no-polish", action="store_true",
+                        help="A2 关闭观感动效（运镜/镜间转场/字幕入场），回到裸草稿")
     args = parser.parse_args()
 
     draft_root = os.path.expanduser(args.draft_root)
@@ -367,6 +498,17 @@ def main():
             ar = None
     ar = ar or "9:16"
 
+    # A2 观感：分镜 style.motion / 项目配置 motion > 账号默认；--no-polish 一键全关
+    OFF = {"ken_burns": False, "transition": "", "subtitle_intro": ""}
+    motion = OFF
+    if not args.no_polish:
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from storyboard_schema import motion_style
+            motion = motion_style(storyboard)
+        except ImportError:
+            print("⚠️  未找到 storyboard_schema，跳过动效", file=sys.stderr)
+
     # 创建草稿
     create_draft(
         aspect_ratio=ar,
@@ -378,6 +520,7 @@ def main():
         images_dir=images_dir,
         native_mix=native_mix,
         real_segs=real_segs,
+        motion=motion,
     )
 
     # 后处理：注入账号字幕样式（pyJD 不支持描边，故在明文 JSON 上改写）

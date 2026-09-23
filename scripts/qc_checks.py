@@ -295,9 +295,10 @@ def check_intermediates(sb: Dict[str, Any], out: str, vo_dir: str, img_dir: str,
         findings.append(_fid("error", "srt", "字幕文件缺失或解析不出条目", path=srt_path))
         return findings  # 后续字幕相关检查无意义
 
-    if len(subs) != len(shots):
+    if len(subs) < len(shots):
         findings.append(_fid("warning", "srt-count",
-                             f"字幕 {len(subs)} 条 ≠ 分镜 {len(shots)} 镜（分句可能多条，需人工确认）"))
+                             f"字幕 {len(subs)} 条 < 分镜 {len(shots)} 镜（有镜没出字幕）"))
+    # 条数**多于**镜数是正常的：A1 起长镜会按词边界拆成逐句字幕（一句一条）。
     non_monotonic = [i + 1 for i, (a, b) in enumerate(zip(subs, subs[1:])) if b[0] < a[1] - 0.01]
     if non_monotonic:
         findings.append(_fid("error", "srt-timeline",

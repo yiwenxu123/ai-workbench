@@ -110,6 +110,38 @@ def shot_scale(shot):
     return max(SUBTITLE_SCALE_MIN, min(SUBTITLE_SCALE_MAX, v))
 
 
+# ── 草稿观感契约（A2：运镜 / 转场 / 字幕入场）────────────────────────
+# 只作用于**剪映草稿通道**：ffmpeg 直出通道的运镜早已在 assemble_video 里（KenBurns）。
+# 数值保守：缩放 8%、漂移 3% 画布，观感"在动"但不晕；转场只在镜间 0.3s 叠化。
+DEFAULT_MOTION_STYLE = {
+    "ken_burns": True,          # 图片静镜的运镜（实拍视频镜本身在动，不加）
+    "kb_scale": 1.08,           # 镜内缩放终值（1.0 = 不动）
+    "kb_pan": 0.03,             # 横向漂移幅度（占画布宽比例，逐镜左右交替）
+    "transition": "叠化",        # 镜间转场名（须匹配剪映转场名；"" = 不加）
+    "transition_sec": 0.3,
+    "subtitle_intro": "渐显",   # 字幕入场动画名（须匹配剪映文本入场名；"" = 不加）
+    "subtitle_intro_sec": 0.25,
+}
+
+
+def motion_style(sb):
+    """取草稿运观感配置，优先级同 subtitle_style：分镜 style.motion > 项目配置 motion > 默认"""
+    s = dict(DEFAULT_MOTION_STYLE)
+    try:
+        import os
+        import sys as _sys
+        _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from providers import load_project_config
+        pc = (load_project_config((sb or {}).get("project_id")).get("motion") or {})
+        s.update({k: v for k, v in pc.items()
+                  if not str(k).startswith("_") and v is not None})
+    except Exception:
+        pass
+    user = ((sb or {}).get("style") or {}).get("motion") or {}
+    s.update({k: v for k, v in user.items() if v is not None})
+    return s
+
+
 def _real_clip_of(shot):
     """real_clip 助手不可导入时的纯 dict 兜底（校验器不能被解析层拖崩）"""
     rc = ((shot or {}).get("visual") or {}).get("real_clip")

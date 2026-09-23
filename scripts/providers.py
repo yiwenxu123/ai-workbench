@@ -54,11 +54,16 @@ def _ffprobe_duration(path):
 
 # ── TTS providers ─────────────────────────────────────────────────────
 
-def tts_edge(text, voice_id, speed=1.0, **_):
+def tts_edge(text, voice_id, speed=1.0, timing=None, **_):
     """
     Edge TTS（微软）——**完全免费、无需 API key**。
     评测期首选。音色如 zh-CN-YunxiNeural（男）/ zh-CN-XiaoxiaoNeural（女）。
-    时长取自 WordBoundary 事件（比解析 mp3 更准）。
+
+    A1 镜内字幕对齐：edge-tts 7.x 默认 `boundary="SentenceBoundary"`，传入
+    `timing={}` 时改要 `WordBoundary`，把逐词时间戳回填成 `timing["words"]`
+    （`[{"w","s","e"}]`，秒，**相对本段音频起点**）给字幕用。
+    总时长仍走 ffprobe（与改动前一致）——词表末端的时刻不含尾静音，
+    拿它当镜时长会把画面切短。
     """
     try:
         import edge_tts
@@ -71,28 +76,37 @@ def tts_edge(text, voice_id, speed=1.0, **_):
     rate = f"{pct:+d}%"
 
     tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
+    want_words = isinstance(timing, dict)
 
-    async def _go():
-        c = edge_tts.Communicate(text, voice, rate=rate)
-        end_us = 0
+    async def _go(boundary):
+        c = edge_tts.Communicate(text, voice, rate=rate,
+                                 **({"boundary": boundary} if boundary else {}))
+        words = []
         with open(tmp, "wb") as f:
             async for chunk in c.stream():
                 if chunk["type"] == "audio":
                     f.write(chunk["data"])
-                elif chunk["type"] == "WordBoundary":
+                elif chunk["type"] in ("WordBoundary", "SentenceBoundary"):
                     # offset/duration 单位为 100ns
-                    end_us = chunk["offset"] + chunk["duration"]
-        return end_us / 10_000_000.0
+                    words.append({"w": chunk.get("text") or "",
+                                  "s": round(chunk["offset"] / 10_000_000.0, 4),
+                                  "e": round((chunk["offset"] + chunk["duration"])
+                                             / 10_000_000.0, 4)})
+        return words
 
     # v4.2 健壮性：edge-tts 的 WebSocket 无内置超时，网络抖动会**永久挂起**
     # （实测：13 镜配音卡住 19 分钟不返回，整条管线停摆）。这里加超时 + 重试。
-    async def _go_with_timeout():
-        return await asyncio.wait_for(_go(), timeout=45)
+    async def _go_with_timeout(boundary):
+        return await asyncio.wait_for(_go(boundary), timeout=45)
 
     last_err = None
+    words = []
     for attempt in range(1, 4):
         try:
-            dur = asyncio.run(_go_with_timeout())
+            # 词级边界偶发 NoAudioReceived：末次退回服务端默认边界，
+            # 宁可"有声音没词表"，不能因为要词表把整镜配音弄失败。
+            boundary = "WordBoundary" if (want_words and attempt < 3) else None
+            words = asyncio.run(_go_with_timeout(boundary))
             break
         except Exception as e:  # 超时/网络错误 → 重试
             last_err = e
@@ -109,11 +123,14 @@ def tts_edge(text, voice_id, speed=1.0, **_):
     data = open(tmp, "rb").read()
     os.unlink(tmp)
     record_cost("tts", "edge", None, len(text), voice)
-    if dur <= 0:                      # 兜底：无 WordBoundary 时用 ffprobe
-        tmp2 = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
-        open(tmp2, "wb").write(data)
-        dur = _ffprobe_duration(tmp2)
-        os.unlink(tmp2)
+    # 镜时长唯一来源：ffprobe 实测（边界末端不含尾静音，拿它当总时长会把画面切短）
+    tmp2 = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
+    open(tmp2, "wb").write(data)
+    dur = _ffprobe_duration(tmp2)
+    os.unlink(tmp2)
+    if isinstance(timing, dict) and words:
+        timing["words"] = words
+        timing["provider"] = "edge"
     return data, round(dur, 3)
 
 
@@ -146,7 +163,47 @@ def tts_minimax(text, voice_id, speed=1.0, model="speech-2.8-hd", **_):
     return bytes.fromhex(hx), round(dur, 3)
 
 
-def tts_dashscope(text, voice_id, speed=1.0, model="qwen3-tts-flash", **_):
+def _ds_collect_words(events):
+    """从 CosyVoice 的 WebSocket 事件流里收词级时间戳（begin/end_time 单位毫秒，
+    相对**本次合成的这段音频**，与 edge 侧车同口径）。
+    同一句会在 sentence-synthesis / sentence-end 里重复出现 → 按 (起始毫秒, 文本) 去重。"""
+    seen, out = set(), []
+    stack = list(events)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (str, bytes)):
+            try:
+                stack.append(json.loads(node))
+            except Exception:
+                pass
+            continue
+        if isinstance(node, list):
+            stack.extend(node)
+            continue
+        if not isinstance(node, dict):
+            continue
+        for k, v in node.items():
+            if k == "words" and isinstance(v, list):
+                for w in v:
+                    if not isinstance(w, dict):
+                        continue
+                    bt, et = w.get("begin_time"), w.get("end_time")
+                    if bt is None or et is None:
+                        continue
+                    key = (int(bt), str(w.get("text") or ""))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    out.append({"w": str(w.get("text") or ""),
+                                "s": round(int(bt) / 1000.0, 4),
+                                "e": round(int(et) / 1000.0, 4)})
+            else:
+                stack.append(v)
+    out.sort(key=lambda x: x["s"])
+    return out
+
+
+def tts_dashscope(text, voice_id, speed=1.0, model="qwen3-tts-flash", timing=None, **_):
     """
     阿里云百炼语音合成 —— 按模型自动分派两种协议：
 
@@ -180,8 +237,37 @@ def tts_dashscope(text, voice_id, speed=1.0, model="qwen3-tts-flash", **_):
             raise RuntimeError("需安装 dashscope SDK：pip install dashscope")
         dashscope.api_key = key
         dashscope.base_websocket_api_url = f"wss://{host}/api-ws/v1/inference"
-        syn = SpeechSynthesizer(model=model, voice=voice)
-        audio = syn.call(text)
+        # 语速：SDK 的 knob 是 speech_rate（请求体里的 parameters.rate）。
+        # 以前这里根本不传 → 配置里的 speed 对克隆音色线完全无效。
+        want_words = isinstance(timing, dict)
+        if want_words:
+            # 词级时间戳只在**流式（callback）路径**上给。注意 SDK 的坑：
+            # 一旦设了 callback，async_call 保持 True，call() 就**不再返回音频**，
+            # 音频必须自己从 on_data 收（见 speech_synthesizer.py:522/853）。
+            from dashscope.audio.tts_v2 import ResultCallback
+
+            chunks, events, failures = [], [], []
+
+            class _Collect(ResultCallback):
+                def on_data(self, data):
+                    chunks.append(data)
+
+                def on_event(self, message):
+                    events.append(message)
+
+                def on_error(self, message):
+                    failures.append(message)
+
+            syn = SpeechSynthesizer(
+                model=model, voice=voice, speech_rate=speed, callback=_Collect(),
+                additional_params={"word_timestamp_enabled": True})
+            syn.call(text)
+            if failures:
+                raise RuntimeError(f"CosyVoice 合成失败: {str(failures[0])[:200]}")
+            audio = b"".join(chunks)
+        else:
+            syn = SpeechSynthesizer(model=model, voice=voice, speech_rate=speed)
+            audio = syn.call(text)
         if not audio:
             raise RuntimeError(f"CosyVoice 合成返回空: {syn.get_response()}")
         tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
@@ -189,6 +275,15 @@ def tts_dashscope(text, voice_id, speed=1.0, model="qwen3-tts-flash", **_):
         dur = _ffprobe_duration(tmp)
         os.unlink(tmp)
         record_cost("tts", "dashscope", model, len(text), voice)
+        if isinstance(timing, dict):
+            words = _ds_collect_words(events) if want_words else []
+            if words:
+                timing["words"] = words
+                timing["provider"] = "dashscope"
+            else:
+                # 拿不到词表不是错误：字幕退回字符比例切分，但必须让人看得见为什么
+                print("⚠️  CosyVoice 未返回词级时间戳，本镜字幕退回字符比例切分"
+                      f"（模型 {model} 不在词表支持名单，或该音色未开放）", file=sys.stderr)
         return audio, round(dur, 3)
 
     # ── 分支 B：Qwen-TTS 系统音色（HTTP）──
@@ -832,6 +927,37 @@ def resolve_tts_params(cli_voice=None, cli_model=None,
     else:
         model, msrc = (prov or {}).get("default_model"), "provider 默认"
     return voice, vsrc, model, msrc
+
+
+def resolve_tts_speed(cli_speed=None, storyboard=None, project_cfg=None):
+    """
+    解析语速倍率，并回显来源。优先级与 resolve_tts_params 同口径：
+        命令行 --speed > 项目配置 tts.speed > 分镜 voice.speed > 1.0
+
+    为什么要单独一个函数：speed 此前**只有命令行一个入口**，配置表和分镜里写的
+    speed 没有任何代码读取（配了不生效比没配置更误导）。上限 2.0/下限 0.5 是
+    对 LLM 产出的分镜字段做边界钳制 —— 倍率写飞了会把整条片子的音画轴拉崩。
+    """
+    sb_v = (storyboard or {}).get("voice") or {}
+    pc = (project_cfg or {}).get("tts") or {}
+    raw, src = None, None
+    if cli_speed is not None:
+        raw, src = cli_speed, "命令行 --speed"
+    elif pc.get("speed") is not None:
+        raw, src = pc["speed"], "项目配置 tts.speed"
+    elif sb_v.get("speed") is not None:
+        raw, src = sb_v["speed"], "分镜 voice.speed"
+    if raw is None:
+        return 1.0, "默认 1.0"
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        print(f"⚠️  语速 {raw!r} 不是数字（{src}），退回 1.0", file=sys.stderr)
+        return 1.0, "默认 1.0（配置值非法）"
+    clamped = max(0.5, min(2.0, v))
+    if clamped != v:
+        print(f"⚠️  语速 {v} 超出 0.5~2.0（{src}），按 {clamped} 执行", file=sys.stderr)
+    return round(clamped, 3), src
 
 
 def resolve_image_provider(cli=None, storyboard=None, project_cfg=None):

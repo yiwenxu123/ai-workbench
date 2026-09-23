@@ -645,8 +645,10 @@ def main():
         budget_watch("voiceover")
 
     if "srt" in stages:
+        # --split-timed：镜内按配音侧车的真实词边界断句（无侧车的镜逐字节退回旧行为）
         run_stage("srt", P(
-            "generate_srt.py", "--storyboard", sb_path, "--output", srt_path))
+            "generate_srt.py", "--storyboard", sb_path, "--output", srt_path,
+            "--split-timed"))
         report("srt", srtPath=srt_path)
 
     # ══ 合规闸（v5.1 P2-3，先审后播）══

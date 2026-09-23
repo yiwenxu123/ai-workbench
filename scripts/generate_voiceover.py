@@ -88,7 +88,8 @@ def main():
     ap.add_argument("--model", default=None,
                     help="模型名；默认按 provider 取（minimax=speech-2.8-hd / "
                          "dashscope=qwen3-tts-flash / edge=无）")
-    ap.add_argument("--speed", type=float, default=1.0)
+    ap.add_argument("--speed", type=float, default=None,
+                    help="语速倍率；不传则按 项目配置 tts.speed > 分镜 voice.speed > 1.0 解析")
     ap.add_argument("--emotion", default=None)
     ap.add_argument("--sample-only", action="store_true",
                     help="样音先行：只生成第一镜供试听")
@@ -112,7 +113,7 @@ def main():
     # 优先级：命令行 > 分镜 > 项目配置(project_configs/<project_id>.json) > provider 默认
     try:
         from providers import (resolve_tts_provider, resolve_tts_params,
-                                load_project_config)
+                                resolve_tts_speed, load_project_config)
     except ImportError:
         print("❌ 缺少 providers.py（provider 抽象层）", file=sys.stderr)
         sys.exit(1)
@@ -120,6 +121,7 @@ def main():
     prov_name, prov = resolve_tts_provider(args.tts_provider, sb, pcfg)
     voice_id, src, args.model, msrc = resolve_tts_params(
         args.voice_id, args.model, sb, pcfg, prov)
+    speed, ssrc = resolve_tts_speed(args.speed, sb, pcfg)
     if pcfg and not args.tts_provider:
         print(f"📋 已加载项目配置: {sb.get('project_id')}"
               f"（{os.path.basename(pcfg and 'project_configs/')}"
@@ -209,11 +211,11 @@ def main():
             au = s.get("audio") or {}
             t = (au.get("text") or s.get("script_line") or "").strip()
             fp = os.path.join(out_dir, f"shot_{sid:03d}.mp3")
-            ch = content_hash(t, voice_id, prov_name, args.speed)
+            ch = content_hash(t, voice_id, prov_name, speed)
             used_p = au.get("tts_provider")
             used_v = au.get("voice_used")
             if (used_p and used_p != prov_name and os.path.exists(fp) and used_v
-                    and au.get("source_hash") == content_hash(t, used_v, used_p, args.speed)):
+                    and au.get("source_hash") == content_hash(t, used_v, used_p, speed)):
                 # P1-c：本镜由降级链产出且输入未变 → 视为未变，别为"换回主选"重烧
                 miss[sid] = (ch, ch, True)
             else:
@@ -221,7 +223,8 @@ def main():
     todo, skipped = select_shots(targets, only=want, missing_hash=miss)
 
     print(f"🎙️  provider={prov_name}（{prov['cost_note']}）")
-    print(f"    音色={voice_id}（{src}） 模型={args.model}（{msrc}） 速度={args.speed}")
+    print(f"    音色={voice_id}（{src}） 模型={args.model}（{msrc}） "
+          f"速度={speed}（{ssrc}）")
     if len(chain) > 1:
         marks = " → ".join(c["name"] + ("*" if c["voice_changed"] else "") for c in chain)
         print(f"    🔗 配音降级链：{marks}"
@@ -243,11 +246,12 @@ def main():
         fname = f"shot_{shot.get('shot_id', i):03d}.mp3"
         fpath = os.path.join(out_dir, fname)
         entry = None
+        timing = {}
         for ci, cand in enumerate(chain):
             try:
-                audio, dur = cand["fn"](text, cand["voice"], speed=args.speed,
+                audio, dur = cand["fn"](text, cand["voice"], speed=speed,
                                         model=cand["model"], emotion=args.emotion,
-                                        api_key=args.api_key)
+                                        api_key=args.api_key, timing=timing)
                 entry = cand
                 break
             except Exception as e:
@@ -268,13 +272,28 @@ def main():
         with open(fpath, "wb") as f:
             f.write(audio)
         au["audio_path"] = fpath
+        # A1 词级对齐：把 TTS 顺手给出的词边界存成音频旁挂侧车（*.words.json）。
+        # 侧车与这段音频同源同寿 —— 本镜换了 provider / 该家不给词边界时就删掉，
+        # 否则字幕会对齐到上一版音频上。
+        sidecar = os.path.splitext(fpath)[0] + ".words.json"
+        words = timing.get("words") or []
+        if words:
+            with open(sidecar, "w", encoding="utf-8") as f:
+                json.dump({"shot_id": shot.get("shot_id", i), "text": text,
+                           "provider": entry["name"], "duration_sec": round(dur, 3),
+                           "words": words}, f, ensure_ascii=False)
+            au["timing_path"] = sidecar
+        else:
+            au.pop("timing_path", None)
+            if os.path.exists(sidecar):
+                os.unlink(sidecar)
         au["duration_sec_actual"] = round(dur, 3)
         au["tts_provider"] = entry["name"]
         # P1-c：降级时记录实际音色（可能≠主选音色），--only-missing 据此认账
         if entry["voice_changed"]:
             au["voice_used"] = entry["voice"]
         # 记录输入指纹，供下次 --only-missing 安全跳过（用实际家/音色算）
-        au["source_hash"] = content_hash(text, entry["voice"], entry["name"], args.speed)
+        au["source_hash"] = content_hash(text, entry["voice"], entry["name"], speed)
         results.append({"shot_id": shot.get("shot_id", i), "path": fpath,
                         "duration_sec": round(dur, 3)})
         via = "" if entry["name"] == prov_name else f"（降级链·经由 {entry['name']}）"
