@@ -28,6 +28,8 @@ ROOT = Path(__file__).resolve().parent.parent
 CHECK = ROOT / "scripts" / "check_apis.py"
 STATE_DIR = ROOT / "runs" / "provider_watch"
 STATE_FILE = STATE_DIR / "last.json"
+LATEST_FILE = STATE_DIR / "latest.json"
+HISTORY_FILE = STATE_DIR / "history.jsonl"
 
 TITLE = "视频工作流·模型巡检"
 
@@ -57,11 +59,32 @@ def run_check() -> dict:
         raise RuntimeError(f"巡检输出不是 JSON（{e}）: {_safe(r.stdout, 200)}") from e
 
 
+def _provider_key(raw: str) -> str:
+    return re.split(r"[//(（]", raw)[0].strip()
+
+
 def failed_set(data: dict) -> list[str]:
     """按 provider/网关归并：百炼一次故障会同时报出 6 行，通知里合成 1 行更可读，
-    具体模型名留在 runs/provider_watch/latest.json 里查。"""
-    return sorted({re.split(r"[//(（]", c["provider"])[0].strip()
+    具体模型名与原因留在 latest.json 的 failures 明细里查。"""
+    return sorted({_provider_key(c.get("provider") or "")
                    for c in data.get("checks", []) if c.get("status") == "fail"})
+
+
+def failure_detail(data: dict) -> list[dict]:
+    """故障逐条明细（面板要看「为什么失败」，只看归并后的 provider 名不够用）。
+    只带脱敏后的短字段：detail 截 180 字，绝不回传密钥/端点以外的凭据信息。"""
+    out = []
+    for c in data.get("checks", []):
+        if c.get("status") != "fail":
+            continue
+        out.append({
+            "provider": _provider_key(c.get("provider") or ""),
+            "check": (c.get("provider") or "").strip(),
+            "capability": c.get("capability") or "",
+            "status_code": c.get("status_code"),
+            "detail": _safe(c.get("detail") or "", 180),
+        })
+    return sorted(out, key=lambda x: (x["provider"], x["capability"]))
 
 
 def read_prev() -> dict | None:
@@ -72,10 +95,15 @@ def read_prev() -> dict | None:
 
 
 def write_state(payload: dict) -> None:
+    """latest.json = 美观全量（含 failures 明细，供面板读）；
+    last.json = 单行基线；history.jsonl 每轮一行，只留判定所需的字段。"""
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    (STATE_DIR / "latest.json").write_text(
+    LATEST_FILE.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    slim = {k: payload.get(k) for k in ("ran_at", "passed", "skipped", "failed")}
+    with HISTORY_FILE.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(slim, ensure_ascii=False) + "\n")
 
 
 def main() -> int:
@@ -101,7 +129,7 @@ def main() -> int:
 
     state = {"ran_at": stamp, "failed": now_failed, "prev_failed": was_failed,
              "passed": data.get("passed"), "skipped": data.get("skipped"),
-             "interpreter": sys.executable}
+             "failures": failure_detail(data), "interpreter": sys.executable}
     write_state(state)
 
     if args.always:

@@ -18,7 +18,11 @@
 `scripts/provider_watch.py` 包一层 `check_apis.py --json`，**只在故障集合发生变化时**弹 macOS 通知
 （首次建基线全量报、恢复报、变化报差集、无变化静默）。故障按 provider 归并，所以百炼 6 条只算 1 条告警。
 
-- 状态落在 `runs/provider_watch/{last,latest}.json`（latest 供面板/其他读端消费）
+- 状态落在 `runs/provider_watch/`：`latest.json`（含 `failures` 逐条原因）、`last.json`（基线）、`history.jsonl`（每轮一行）
+- 面板留痕：DSH 内容运营面板总览底部的「🩺 模型巡检」条读的是同源端点
+  `/@dsh-external/dsh-content-ops-panel/api/provider-watch`（host 直接读本目录，不经内容中心，
+  不下发 `interpreter` 与密钥）。超过 30 小时没有新记录 → 条子转橙显示「巡检超时」，
+  这是横幅告警覆盖不到的那一半：**监控自己死了，横幅不会响**。
 - 加载方式（launchd 用户级，plist 不入库）：
   `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.content-ops.provider-watch.plist`
 - 改时间点：编辑 plist 的 `StartCalendarInterval` → `launchctl bootout gui/$(id -u)/com.content-ops.provider-watch` → 重新 bootstrap
