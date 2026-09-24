@@ -21,7 +21,13 @@
  12 cover       封面/标题包（generate_cover：钩子帧优选 + 标题 A/B 候选；零成本，失败不阻断）
  13 qc          粗剪自检门禁（qc_checks；error 阻断→停 qc_failed，--only qc 可复跑）
 
-退出码：0=完成/停闸　2=QC 阻断　3=自动化档非法　4=预算熔断　5=合规未过　6=类型规则拿不到
+退出码：0=完成/停闸　2=QC 阻断　3=自动化档非法　4=预算熔断　5=合规未过　6=类型规则拿不到　7=回写被拒(401/403)
+
+跨仓机器契约（#4）：除退出码外，stdout 上以 `#VIDEO-EVENT# {json}` 打结构化事件——
+  stage_start {stage,index,total,cn} / stage_failed {stage,rc,error}
+  gate_pause {gate,reason=unapproved|review_touched|content_changed,review}
+  budget_stop {stage,spent} / callback_rejected {stage,http}
+DSH 面板执行器只解析这些行推断进度与停闸，**不再扫中文横幅**。字段名不许改（可加）。
 
 用法：
   run_pipeline.py --storyboard sb.json --out-dir out/ \
@@ -82,7 +88,22 @@ def stage_title(name: str) -> str:
     return f"{ALL_STAGES.index(name) + 1}/{len(ALL_STAGES)} {STAGE_CN.get(name, name)}"
 
 
+# ══ 跨仓机器可读事件（#4）══
+# 控制台的 ▶ N/M 中文横幅是给人看的，措辞可随意演进；DSH 面板执行器以前靠正则扫这些
+# 中文文案推断「跑到第几阶段/是不是停在闸上」，改一条文案就静默断掉跨仓契约。
+# 契约只有两样：本函数打出的事件行（字段名不许改，可加）+ 退出码（0/2/3/4/5/6）。
+EVENT_PREFIX = "#VIDEO-EVENT# "
+
+
+def contract(event: str, **fields) -> None:
+    body = {"v": 1, "event": event}
+    body.update(fields)
+    print(EVENT_PREFIX + json.dumps(body, ensure_ascii=False, separators=(",", ":")), flush=True)
+
+
 CATALOG_CACHE = os.path.expanduser("~/.cache/content-ops-video/content-types.json")
+# 与内容中心约定的回写共享密钥文件（0600；env 同名变量可覆盖）
+CALLBACK_TOKEN_FILE = os.path.expanduser("~/.config/content-ops/callback-token")
 
 
 def _write_catalog_cache(types: list) -> None:
@@ -139,6 +160,26 @@ def fetch_content_type_catalog(api_base: str, timeout: int = 5) -> dict:
 EXIT_COMPLIANCE_BLOCKED = 5
 # 类型规则拿不到（内容中心不可达且无缓存）：非口播类型拒绝按口播全阶段跑
 EXIT_TYPE_CATALOG = 6
+# 进度回写被内容中心以 401/403 拒绝：token 缺失或不匹配，属配置坏了，
+# 继续跑只会「钱花了、进度没人知道」→ 立即停（见 report()）
+EXIT_CALLBACK_REJECTED = 7
+
+
+def callback_token() -> str:
+    """回写共享密钥：env VIDEO_CALLBACK_TOKEN 优先，否则读两边约定的文件。
+
+    为什么要有文件这条路：管线可能被 agent 终端、面板执行器或巡检脚本各自拉起，
+    没有一个地方保证它们都带着 api-server 的 .env。放一个 0600 的用户级文件，
+    谁拉起来都能读到同一份密钥。
+    """
+    tok = (os.environ.get("VIDEO_CALLBACK_TOKEN") or "").strip()
+    if tok:
+        return tok
+    try:
+        with open(CALLBACK_TOKEN_FILE, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
 
 
 def summarize_compliance(cj: dict) -> dict:
@@ -173,6 +214,8 @@ _stage_death_report = None
 
 def run_stage(name, cmd):
     print(f"\n{'='*60}\n▶ {stage_title(name)}\n{'='*60}")
+    contract("stage_start", stage=name, index=ALL_STAGES.index(name) + 1,
+             total=len(ALL_STAGES), cn=STAGE_CN.get(name, name))
     # stderr 逐行透传的同时留末段尾巴，供回写 error 用（不牺牲实时性）
     proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, bufsize=1)
     tail = ""
@@ -185,6 +228,7 @@ def run_stage(name, cmd):
         msg = (f"阶段 {STAGE_CN.get(name, name)} 失败（退出码 {rc}）"
                f"；末段输出：{tail.strip()[:200] or '（子进程无 stderr）'}")
         print(f"❌ {msg}，已中止", file=sys.stderr)
+        contract("stage_failed", stage=name, rc=rc, error=msg)
         if _stage_death_report:
             try:
                 # 只记 error 不标 failed：任务停在原阶段，人可用 --only-missing 续跑
@@ -415,8 +459,14 @@ def main():
     except ImportError:
         gates = None
 
-    # ══ 进度回写内容中心（v4.0 P1-5：--video-id 提供即启用；失败仅警告不阻断）══
+    # ══ 进度回写内容中心（v4.0 P1-5：--video-id 提供即启用）══
+    # 失败分两类（#6）：401/403 是**配置坏了**，永远不会自愈 → 立刻停，别一边烧钱
+    # 一边把进度丢在无人知晓的地方；网络/5xx 是**中心临时不通** → 告警继续，
+    # 本地产物与闸状态仍在，跑完可用 --only-missing 续或事后补记。
+    import urllib.error
     import urllib.request
+
+    _no_token_warned = []
 
     def report(stage, *, status=None, note=None, error=None, fail=None, **extra):
         if not args.video_id:
@@ -433,9 +483,13 @@ def main():
             body["fail"] = fail
         body.update(extra)
         headers = {"Content-Type": "application/json"}
-        tok = os.environ.get("VIDEO_CALLBACK_TOKEN")
+        tok = callback_token()
         if tok:
             headers["x-callback-token"] = tok
+        elif not _no_token_warned:
+            _no_token_warned.append(1)
+            print(f"⚠️  未找到回写 token（env VIDEO_CALLBACK_TOKEN 或 {CALLBACK_TOKEN_FILE}）："
+                  f"内容中心一旦要求鉴权，本次所有进度都会丢。", file=sys.stderr)
         try:
             req = urllib.request.Request(
                 f"{base}/videos/{args.video_id}/progress",
@@ -444,8 +498,19 @@ def main():
             with urllib.request.urlopen(req, timeout=5) as r:
                 r.read()
             print(f"📡 已回写进度: {stage}")
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                print(f"❌ 进度回写被内容中心拒绝（HTTP {e.code}）：token 缺失或不匹配。\n"
+                      f"   本次运行**已停下**，未再往下花钱；已产出的本地产物保留，\n"
+                      f"   配好 token（{CALLBACK_TOKEN_FILE} 或 env VIDEO_CALLBACK_TOKEN）后\n"
+                      f"   加 --only-missing 续跑即可。", file=sys.stderr)
+                contract("callback_rejected", stage=stage, http=e.code)
+                sys.exit(EXIT_CALLBACK_REJECTED)
+            print(f"⚠️  进度回写被拒（HTTP {e.code}，不影响管线继续）: {str(e)[:120]}",
+                  file=sys.stderr)
         except Exception as e:
-            print(f"⚠️  进度回写失败（不影响管线）: {type(e).__name__}: {str(e)[:120]}")
+            print(f"⚠️  进度回写不通（内容中心可能在重启，不影响管线）: "
+                  f"{type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
 
     # P1-c：把回写口交给 run_stage，阶段死亡也能落 videos.errors
     global _stage_death_report
@@ -537,6 +602,7 @@ def main():
         print(f"\n🛑 {msg}", file=sys.stderr)
         report("budget_exceeded", status="in_progress", note=msg,
                cost={"total": round(spent, 4)})
+        contract("budget_stop", stage=stage, spent=round(spent, 4))
         sys.exit(4)
 
     def budget_guard(stage):
@@ -683,15 +749,20 @@ def main():
             rp = gates.write_review(out, gate, sb, img_dir)
             print(gates.gate_banner(out, gate, sb))
             report(f"gate_{gate}", note=f"停在人工确认闸: {gate}（审阅文件 {rp}）")
+            contract("gate_pause", gate=gate, reason="unapproved", review=str(rp))
             sys.exit(0)
         note = ""
+        reason = ""
+        rp = ""
         if gates.review_touched_after_approval(out, gate):
+            reason = "review_touched"
             note = (f"【{gate}】闸已批准，但审阅文件在批准之后又被改过——"
                     f"这些改动不会自动生效，请用 --approve {gate} 回写进分镜"
                     f"（审阅文件已保留，未覆盖）")
             print(f"⚠️  {note}", file=sys.stderr)
         elif not gates.is_approved(out, gate, sb):
             rp = gates.write_review(out, gate, sb, img_dir)
+            reason = "content_changed"
             note = (f"【{gate}】闸批准过后分镜内容又变了（指纹不一致），"
                     f"已按新内容重出审阅文件待复核: {rp}")
             print(gates.gate_banner(out, gate, sb))
@@ -700,6 +771,7 @@ def main():
             print(f"✅【{gate}】闸已通过")
             return
         report(f"gate_{gate}", note=note)
+        contract("gate_pause", gate=gate, reason=reason, review=str(rp))
         sys.exit(0)
 
     check_gate("script", "voiceover")
