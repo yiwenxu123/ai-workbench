@@ -3,12 +3,17 @@
   "account": "潘哆啦",
   "domain": "历史文化 + 猎奇",
   "tts": {
-    "provider": "dashscope",
-    "model": "cosyvoice-v3.5-flash",
-    "voice_id": "cosyvoice-v3.5-flash-pd35f-b10ec0abc6b84ab999c7b6e6589bc137",
+    "provider": "stepfun",
+    "model": "step-tts-2",
+    "voice_id": "zhixingjiejie",
     "speed": 1.25,
-    "_note": "克隆音色（本人音色），0.8元/万字符；走 WebSocket。speed 由 resolve_tts_speed 读取（账号定位偏欢快，2026-09-23 由 1.0 调到 1.25）",
+    "_note": "2026-09-23 临时切线：百炼账号 Arrearage（欠费）导致 cosyvoice/qwen3 全部 403/400，改走阶跃 step-tts-2（实测 ¥0 且 10 个系统音色全可用）。音色属账号身份，试听样本在 runs/音色试听-20260923/，定了就改 voice_id 一行。speed 由 resolve_tts_speed 读取（账号定位偏欢快，2026-09-23 由 1.0 调到 1.25）",
     "_alternatives": {
+      "百炼克隆音色（待账号恢复）": {
+        "provider": "dashscope",
+        "model": "cosyvoice-v3.5-flash",
+        "voice_id": "cosyvoice-v3.5-flash-pd35f-b10ec0abc6b84ab999c7b6e6589bc137"
+      },
       "更高质量": {
         "model": "cosyvoice-v3.5-plus",
         "voice_id": "cosyvoice-v3.5-plus-pd35p-25192ef97d7b4a948ef440593f45a9e2"

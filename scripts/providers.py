@@ -541,6 +541,21 @@ def img_ark_plan(prompt, aspect_ratio="9:16", model="doubao-seedream-5.0-lite", 
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "project_configs")
 
 
+def project_config_file(project_id):
+    """返回**实际生效**的配置文件名（含别名反查），供日志显示真实来源。
+
+    日志里凭 project_id 猜文件名会写出根本不存在的 project_configs/<PB id>.json，
+    而内容中心传的是 PocketBase ID、文件按 slug 命名 —— 看错文件名正是排查
+    「配置没生效」时最容易上当的一步。
+    """
+    if not project_id:
+        return None
+    p = os.path.join(CONFIG_DIR, f"{project_id}.json")
+    if not os.path.exists(p):
+        p = _resolve_project_config_by_alias(project_id)
+    return os.path.basename(p) if p else None
+
+
 def load_project_config(project_id):
     """
     读项目级配置。用于把 provider / model / voice_id / 风格 / 平台等
@@ -724,7 +739,17 @@ IMAGE_PROVIDERS = {
 
 CATALOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_catalog.json")
 _catalog_loaded = False
+_catalog_providers_inited = False
 _model_catalog = {}
+# (模态, provider, model) → 目录里的 label。同一个 provider 可以挂多个 model
+# （阶跃就有 mini / tts-2 两档），而 TTS_PROVIDERS 每 provider 只有一条、
+# 元数据取自**首个**登记条目 → 直接打 prov['cost_note'] 会把 tts-2 显示成 Mini。
+_MODEL_LABEL = {}
+
+
+def model_label(kind, provider, model):
+    """查目录里登记的中文档位名；未登记返回 None（调用方自行回落）。"""
+    return _MODEL_LABEL.get((kind, provider, model))
 
 
 def load_model_catalog(force=False):
@@ -839,9 +864,10 @@ def _make_openai_image(provider_name, gw):
 
 def init_catalog_providers():
     """把模型目录里 openai-* 协议条目合并进 PROVIDERS 与 _PRICE（幂等）。"""
-    global _catalog_loaded
-    if _catalog_loaded:
+    global _catalog_providers_inited
+    if _catalog_providers_inited:
         return
+    _catalog_providers_inited = True
     cat = load_model_catalog()
     gws = cat.get("gateways") or {}
 
@@ -853,6 +879,7 @@ def init_catalog_providers():
         # model=null 表示「该 provider 的档位价」（如 edge 免费），同样要登记，
         # 否则 unit_price 查不到会回落成「未登记」——成本预估与费用标签都会失准。
         _PRICE[("tts", prov, model)] = price / 10000
+        _MODEL_LABEL[("tts", prov, model)] = e.get("label") or prov
         if e.get("protocol") == "openai-audio" and e.get("gateway") in gws and prov not in TTS_PROVIDERS:
             gw = gws[e["gateway"]]
             TTS_PROVIDERS[prov] = {
@@ -872,6 +899,7 @@ def init_catalog_providers():
         # 返回 estimate=True（面板显示『单价未登记』），绝不谎报 ¥0。
         if e.get("price") is not None:
             _PRICE[("image", prov, model)] = float(e["price"])
+        _MODEL_LABEL[("image", prov, model)] = e.get("label") or prov
         if e.get("protocol") == "openai-image" and e.get("gateway") in gws and prov not in IMAGE_PROVIDERS:
             gw = gws[e["gateway"]]
             IMAGE_PROVIDERS[prov] = {

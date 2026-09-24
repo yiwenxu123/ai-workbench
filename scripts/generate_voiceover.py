@@ -113,7 +113,8 @@ def main():
     # 优先级：命令行 > 分镜 > 项目配置(project_configs/<project_id>.json) > provider 默认
     try:
         from providers import (resolve_tts_provider, resolve_tts_params,
-                                resolve_tts_speed, load_project_config)
+                                resolve_tts_speed, load_project_config,
+                                model_label, project_config_file)
     except ImportError:
         print("❌ 缺少 providers.py（provider 抽象层）", file=sys.stderr)
         sys.exit(1)
@@ -124,8 +125,7 @@ def main():
     speed, ssrc = resolve_tts_speed(args.speed, sb, pcfg)
     if pcfg and not args.tts_provider:
         print(f"📋 已加载项目配置: {sb.get('project_id')}"
-              f"（{os.path.basename(pcfg and 'project_configs/')}"
-              f"{sb.get('project_id')}.json）")
+              f"（{project_config_file(sb.get('project_id'))}）")
 
     # 契约校验（§2.1 / §16.4 R3）：把字段漂移挡在入口，避免"跑完才发现字段不对"
     try:
@@ -222,7 +222,10 @@ def main():
                 miss[sid] = (ch, au.get("source_hash"), os.path.exists(fp))
     todo, skipped = select_shots(targets, only=want, missing_hash=miss)
 
-    print(f"🎙️  provider={prov_name}（{prov['cost_note']}）")
+    # 档位名按**实际选中的 model** 查目录：TTS_PROVIDERS 每个 provider 只有一条
+    # 注册项、元数据取自首个登记条目，直接打 cost_note 会把 step-tts-2 显示成「阶跃 Mini」。
+    print(f"🎙️  provider={prov_name}"
+          f"（{model_label('tts', prov_name, args.model) or prov['cost_note']}）")
     print(f"    音色={voice_id}（{src}） 模型={args.model}（{msrc}） "
           f"速度={speed}（{ssrc}）")
     if len(chain) > 1:
