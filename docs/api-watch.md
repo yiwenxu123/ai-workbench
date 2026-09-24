@@ -13,6 +13,18 @@
 - 处理状态: 待处理 / 已修复(commit xxx)
 ```
 
+## 每日定时告警（provider_watch.py）
+
+`scripts/provider_watch.py` 包一层 `check_apis.py --json`，**只在故障集合发生变化时**弹 macOS 通知
+（首次建基线全量报、恢复报、变化报差集、无变化静默）。故障按 provider 归并，所以百炼 6 条只算 1 条告警。
+
+- 状态落在 `runs/provider_watch/{last,latest}.json`（latest 供面板/其他读端消费）
+- 加载方式（launchd 用户级，plist 不入库）：
+  `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.content-ops.provider-watch.plist`
+- 改时间点：编辑 plist 的 `StartCalendarInterval` → `launchctl bootout gui/$(id -u)/com.content-ops.provider-watch` → 重新 bootstrap
+- 立刻试跑一次并强制出通知：`.venv-pyjd/bin/python scripts/provider_watch.py --always`
+- 必须用管线 venv（`.venv-pyjd/bin/python`），否则 edge 那条兜底会误报缺依赖
+
 ## 2026-08-03
 
 ### 发现: DashScope 账户欠费
