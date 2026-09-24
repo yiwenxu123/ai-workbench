@@ -21,7 +21,7 @@
  12 cover       封面/标题包（generate_cover：钩子帧优选 + 标题 A/B 候选；零成本，失败不阻断）
  13 qc          粗剪自检门禁（qc_checks；error 阻断→停 qc_failed，--only qc 可复跑）
 
-退出码：0=完成/停闸　2=QC 阻断　3=自动化档非法　4=预算熔断　5=合规未过
+退出码：0=完成/停闸　2=QC 阻断　3=自动化档非法　4=预算熔断　5=合规未过　6=类型规则拿不到
 
 用法：
   run_pipeline.py --storyboard sb.json --out-dir out/ \
@@ -36,7 +36,9 @@
   品牌片默认不压全片字幕、混剪默认不配音不打字幕且素材复用优先……
   这些规则**不在本文件写死** —— 启动时从内容中心拉 `GET /videos/content-types`
   （单一真相源：内容中心 `config/video-content-types.json`），**加类型线 = 改 JSON**。
-  内容中心不可达时按「无类型目录」处理（等价口播全阶段）并打印警告。
+  内容中心不可达时退回上次成功的类型目录缓存（~/.cache/content-ops-video/）；
+  缓存也没有则**只有口播**可按默认全阶段继续，非口播直接以退出码 6 停下——
+  拿不到规则就按口播跑会给混剪/品牌任务白烧配音与生图。
 
 自动化三档（v5.1 P2-1，越往后越贵故决策权前移到免费阶段）：
   manual（默认） 三闸全停：台词 → 分镜 → 素材，每道都等人确认；
@@ -62,6 +64,9 @@ PY = VENV_PY if os.path.exists(VENV_PY) else sys.executable
 ALL_STAGES = ["validate", "voiceover", "srt", "compliance", "reuse", "pexels", "images",
               "eagle", "broll", "draft", "video", "cover", "qc"]
 
+# manual 档的默认闸位（与 gates.GATE_ORDER 同序）：不依赖 gates 模块是否可用
+MANUAL_GATES = ["script", "storyboard", "images"]
+
 # 阶段中文名（编号由 ALL_STAGES 位置动态生成，新增阶段不再需要手改 10 处编号）
 STAGE_CN = {
     "validate": "契约校验", "voiceover": "逐镜配音", "srt": "字幕直出",
@@ -77,6 +82,21 @@ def stage_title(name: str) -> str:
     return f"{ALL_STAGES.index(name) + 1}/{len(ALL_STAGES)} {STAGE_CN.get(name, name)}"
 
 
+CATALOG_CACHE = os.path.expanduser("~/.cache/content-ops-video/content-types.json")
+
+
+def _write_catalog_cache(types: list) -> None:
+    try:
+        os.makedirs(os.path.dirname(CATALOG_CACHE), exist_ok=True)
+        tmp = CATALOG_CACHE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"types": types}, f, ensure_ascii=False)
+        os.replace(tmp, CATALOG_CACHE)
+    except OSError as e:
+        print(f"⚠️  类型目录缓存写入失败（本次照常可用，但中心不可达时没有兜底）: "
+              f"{type(e).__name__}: {str(e)[:80]}", file=sys.stderr)
+
+
 def fetch_content_type_catalog(api_base: str, timeout: int = 5) -> dict:
     """从内容中心拉视频类型目录（v5.1 P3-2）。
 
@@ -84,8 +104,10 @@ def fetch_content_type_catalog(api_base: str, timeout: int = 5) -> dict:
     （`config/video-content-types.json`，与 publish-platforms.json 同约定），
     引擎是执行方不是规则方；本地再放一份必然漂移。
 
-    拉不到就返回 {}：调用方按「无类型目录」处理 —— 等价于口播全阶段的历史行为，
-    并打印警告。**绝不因为中心抖动改变产线语义**（与 compliance 的降级口径一致）。
+    拉不到时退回**上一次成功拉取的缓存**（只当兜底，不参与日常）。
+    缓存也没有 → 返回 {}，由调用方决定：口播可以按默认行为继续（那本来就是
+    历史行为），非口播**必须停下**（见 main 里的类型目录硬闸）——「取不到规则」
+    不能退化成「按口播全阶段跑」，那会给混剪/品牌任务白烧配音和生图。
     """
     import urllib.request
     url = api_base.rstrip("/") + "/videos/content-types"
@@ -95,15 +117,28 @@ def fetch_content_type_catalog(api_base: str, timeout: int = 5) -> dict:
         types = ((payload or {}).get("data") or {}).get("types")
         if not types:
             raise RuntimeError("目录为空")
+        _write_catalog_cache(types)
         return {t.get("key"): t for t in types if isinstance(t, dict) and t.get("key")}
     except Exception as e:
-        print(f"⚠️  视频类型目录拉取失败（按默认口播行为继续）: {type(e).__name__}: {str(e)[:100]}",
+        print(f"⚠️  类型目录拉取失败（{type(e).__name__}: {str(e)[:100]}），改用上次成功的缓存",
               file=sys.stderr)
-        return {}
+    try:
+        with open(CATALOG_CACHE, encoding="utf-8") as f:
+            types = (json.load(f) or {}).get("types") or []
+        catalog = {t.get("key"): t for t in types if isinstance(t, dict) and t.get("key")}
+        if catalog:
+            print(f"📦 用本地类型目录缓存（{CATALOG_CACHE}）：{sorted(catalog)}"
+                  f"——中心侧改过类型规则时这份是旧的", file=sys.stderr)
+            return catalog
+    except (OSError, ValueError) as e:
+        print(f"📦 无可用类型目录缓存（{type(e).__name__}）", file=sys.stderr)
+    return {}
 
 
 # 门禁类退出码（与 qc_checks 的 2 / 预算熔断的 4 并列，便于上层区分停因）
 EXIT_COMPLIANCE_BLOCKED = 5
+# 类型规则拿不到（内容中心不可达且无缓存）：非口播类型拒绝按口播全阶段跑
+EXIT_TYPE_CATALOG = 6
 
 
 def summarize_compliance(cj: dict) -> dict:
@@ -186,7 +221,8 @@ def main():
     ap.add_argument("--only-missing", action="store_true",
                     help="增量重生成：跳过「产物已存在且输入未变」的镜（配音/生图都生效）")
     ap.add_argument("--gate", default=None,
-                    help="人工确认闸（逗号分隔）：script=台词 / storyboard=画面 / images=素材")
+                    help="人工确认闸（逗号分隔）：script=台词 / storyboard=画面 / images=素材。"
+                         "manual 档不传 = 三道全停（已批准的自动放行）；显式传才按列出的收窄")
     ap.add_argument("--automation", choices=["manual", "cruise", "auto"], default="manual",
                     help="自动化档位（v5.1 P2-1）：manual=三闸全停（默认）；"
                          "cruise=跳过台词/分镜闸，保留 images 闸 + QC；"
@@ -228,9 +264,23 @@ def main():
     api_base = (os.environ.get("CONTENT_OPS_API_BASE") or "http://localhost:3002/api/v1").rstrip("/")
     type_catalog = fetch_content_type_catalog(api_base)
     cprofile = type_catalog.get(content_type) or {}
-    if type_catalog and not cprofile:
-        print(f"⚠️  类型 {content_type!r} 不在内容中心类型目录（允许 {sorted(type_catalog)}），"
-              f"按默认（口播）行为继续", file=sys.stderr)
+    if not cprofile:
+        if content_type != "koubo":
+            # 类型规则取不到就按口播全阶段跑 = 给混剪/品牌任务白跑配音、字幕、生图
+            # （混剪本该跳 voiceover+srt）。此前这里只是一行 stderr 警告并继续，
+            # 等于把「中心抖动」放大成「产线语义变了」。宁可停下也不烧错钱。
+            print(f"❌ 类型 {content_type!r} 的规则拿不到"
+                  f"（内容中心不可达，且本地无类型目录缓存）。\n"
+                  f"   已拒绝按口播默认行为继续：那会给该类型白跑配音/字幕/生图。\n"
+                  f"   处理：起内容中心后重跑（pm2 restart content-ops-api），"
+                  f"或先确认 GET {api_base}/videos/content-types 有数据\n"
+                  f"   本次未跑任何阶段，不产生费用。", file=sys.stderr)
+            sys.exit(EXIT_TYPE_CATALOG)
+        if type_catalog:
+            print(f"⚠️  口播不在内容中心类型目录（允许 {sorted(type_catalog)}），按默认行为继续",
+                  file=sys.stderr)
+        else:
+            print("⚠️  类型目录不可达且无缓存：按口播默认（全阶段）行为继续", file=sys.stderr)
     # 类型侧的「要不要配音/字幕」以目录为准（而不是「本次跑没跑该阶段」）：
     # `--only qc` 复验时 stages 只有 qc，若按 stages 推断就会把口播任务的配音/字幕检查全跳过。
     expect_voiceover = bool(cprofile.get("voiceover", True))
@@ -510,10 +560,16 @@ def main():
 
     wanted_gates = [g.strip() for g in (args.gate or "").replace("，", ",").split(",") if g.strip()]
 
-    # ══ 自动化档位（v5.1 P2-1）══
+    # ══ 自动化档位（v5.1 P2-1；#8 根因修补：manual 缺 --gate 不再等于不停闸）══
     # 越往后越贵，故决策权前移到免费阶段：manual 三闸全停；cruise 只留最贵的 images 闸
     # （画面必须人看）；auto 全跳过——**只允许 test 档**，无人值守 × 付费模型禁止。
-    if args.automation != "manual":
+    if args.automation == "manual" and args.gate is None:
+        # 工作台批准指令、面板「本地执行」按钮都可能不带 --gate；曾经缺省=一道不停，
+        # 等于批准台词后直接穿过画面闸跑到生图花钱。缺 --gate 时按 manual 的口径全停。
+        wanted_gates = list(MANUAL_GATES)
+        print(f"🛑 manual 档未带 --gate：按默认停在全部人工闸（{','.join(wanted_gates)}）；"
+              f"已批准的闸会自动放行。")
+    elif args.automation != "manual":
         if args.automation == "auto":
             if args.profile != "test":
                 print("❌ 全自动档禁止 prod 付费档（无人值守 × 付费模型 = 成本失控）。\n"
@@ -573,7 +629,9 @@ def main():
                 if rr.returncode != 0:
                     print(f"❌ 意见重生成未完成（退出码 {rr.returncode}），**未批准**【{g}】闸。\n"
                           f"   可人工直接编辑 {gates.review_path(out, g)} 的"
-                          f"台词/画面字段后再 --approve {g}", file=sys.stderr)
+                          f"台词/画面字段后再 --approve {g}"
+                          + (f" --gate {gates.remaining_gates(g)}" if gates.remaining_gates(g) else "")
+                          , file=sys.stderr)
                     sys.exit(1)
                 with open(sb_path, encoding="utf-8") as f:
                     sb = json.load(f)
@@ -582,10 +640,13 @@ def main():
                     gates.write_review(out, g, sb, img_dir, feedback=[])
                 except Exception:
                     pass
-                print(f"✅ 【{g}】闸意见处理完毕，重新停闸给人复核效果（直接再跑同一条 --approve 命令即可）。")
+                nxt = gates.remaining_gates(g)
+                print(f"✅ 【{g}】闸意见处理完毕，重新停闸给人复核效果"
+                      f"（再跑同一条 --approve {g}"
+                      + (f" --gate {nxt} 即可" if nxt else " 即可") + "）。")
                 sys.exit(0)
             sb, changes, regen = gates.apply_review(out, g, sb)[:3]
-            gates.mark_approved(out, g)
+            gates.mark_approved(out, g, sb)
             print(f"✅ 已批准【{g}】闸")
             for c in changes:
                 print(f"    {c}")
@@ -606,17 +667,39 @@ def main():
         print("    修改已回写分镜。继续运行剩余阶段。")
 
     # ② 闸检查：未批准则写出审阅文件并停下
-    def check_gate(gate, before_stage):
+    # before_stage 可选：留空表示「本阶段跑过就该停」（images 闸在生图之后，
+    # 其前置条件由调用方自己判断，不能拿下游阶段当条件）。
+    #
+    # 「批过」不等于「可以跳」：批准标记记的是当时那份分镜的指纹（gates.gate_digest），
+    # 内容变了就重新停闸。否则出现两个静默漏洞——批完闸后手改 storyboard.json 直接
+    # 重跑会一路跑到花钱；手改 review/*.md 更是既无效（只有 --approve 才回写）
+    # 又被 write_review 覆盖掉。
+    def check_gate(gate, before_stage=None):
         if not gates or gate not in wanted_gates:
             return
-        if gates.is_approved(out, gate):
+        if before_stage and before_stage not in stages:
+            return
+        if not gates.is_approved(out, gate):
+            rp = gates.write_review(out, gate, sb, img_dir)
+            print(gates.gate_banner(out, gate, sb))
+            report(f"gate_{gate}", note=f"停在人工确认闸: {gate}（审阅文件 {rp}）")
+            sys.exit(0)
+        note = ""
+        if gates.review_touched_after_approval(out, gate):
+            note = (f"【{gate}】闸已批准，但审阅文件在批准之后又被改过——"
+                    f"这些改动不会自动生效，请用 --approve {gate} 回写进分镜"
+                    f"（审阅文件已保留，未覆盖）")
+            print(f"⚠️  {note}", file=sys.stderr)
+        elif not gates.is_approved(out, gate, sb):
+            rp = gates.write_review(out, gate, sb, img_dir)
+            note = (f"【{gate}】闸批准过后分镜内容又变了（指纹不一致），"
+                    f"已按新内容重出审阅文件待复核: {rp}")
+            print(gates.gate_banner(out, gate, sb))
+            print(f"⚠️  {note}", file=sys.stderr)
+        else:
             print(f"✅【{gate}】闸已通过")
             return
-        if before_stage not in stages:
-            return
-        rp = gates.write_review(out, gate, sb, img_dir)
-        print(gates.gate_banner(out, gate, sb))
-        report(f"gate_{gate}", note=f"停在人工确认闸: {gate}（审阅文件 {rp}）")
+        report(f"gate_{gate}", note=note)
         sys.exit(0)
 
     check_gate("script", "voiceover")
@@ -726,12 +809,11 @@ def main():
 
     # ══ images 闸：素材确认（**必须在入库 Eagle 之前**，v4.0 P0-2：
     #    否则被否决的图先入库，还会被后续 reuse 复用回来）══
-    if gates and "images" in wanted_gates and "images" in stages:
-        if not gates.is_approved(out, "images"):
-            gates.write_review(out, "images", sb, img_dir)
-            print(gates.gate_banner(out, "images", sb))
-            sys.exit(0)
-        print("✅【images】闸已通过")
+    # 走统一的 check_gate：此前这里手抄了一份停闸逻辑，漏了 report("gate_images")，
+    # 导致面板「待我处理」的闸待办（只认 current_stage 的 gate_ 前缀）永远不出现
+    # 这道守住绝大部分成本的闸——从 CLI/agent 启动时完全无人知晓任务停在哪。
+    if "images" in stages:
+        check_gate("images")
 
     # ══ 素材入库 Eagle（在闸之后：只有人确认通过的图才入库）══
     if "eagle" in stages:

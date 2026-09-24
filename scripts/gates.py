@@ -12,18 +12,23 @@
   3. images     —— 素材确认（可勾选「重跑」哪几镜）
 
 用法（非交互式，脚本化可复现）：
-  # 跑到闸就停下
+  # 跑到闸就停下（manual 档不传 --gate 就是这三道全停，命令行只是显式收窄）
   run_pipeline.py ... --gate script,storyboard,images
   # 在 review/xxx.md 里改，改完批准（同时把修改回写进分镜）
-  run_pipeline.py ... --approve script
-  run_pipeline.py ... --approve storyboard
-  run_pipeline.py ... --approve images      # 会把勾选「重跑」的镜重新生图
+  # 批准这道闸后还要停在哪些闸，用 --gate 说清楚；不给 --gate 就是全停，
+  # 已批准的闸靠 .approved 指纹自动放行，不会重复拦你。
+  run_pipeline.py ... --approve script     --gate storyboard,images
+  run_pipeline.py ... --approve storyboard --gate images
+  run_pipeline.py ... --approve images     # 会把勾选「重跑」的镜重新生图（已是最后一道闸）
 
-批准状态 = review/<gate>.approved 文件存在。
+批准状态 = review/<gate>.approved 存在，**且里面记的分镜指纹与当前分镜一致**
+（指纹只覆盖该闸人真正审过的字段，见 gate_digest）。
 """
+import hashlib
 import json
 import os
 import sys
+import time
 
 GATES = ["script", "storyboard", "images"]
 
@@ -90,14 +95,78 @@ def ensure_review_dir(out_dir):
     return d
 
 
-def is_approved(out_dir, gate):
-    return os.path.exists(approved_path(out_dir, gate))
+def gate_digest(gate, sb):
+    """某道闸「批准的对象」的指纹——只取人在该闸真正审过的字段。
+
+    刻意不对整个分镜取指纹：voiceover 回填 duration_sec_actual、images 回填
+    source_ref.path 都是**机器在改** storyboard.json，拿全量指纹会把正常的
+    断点续跑误判成「批准后有人动过分镜」，于是每次复跑都被重新停闸。
+    按闸取字段后，机器回填不影响指纹，人改台词/画面则会。
+
+    images 闸的指纹含 prompt 与图片路径：同一镜原地换图（路径不变、prompt 不变）
+    不会触发重审——那道闸批的是「这些镜用这个画面描述产出的素材可以要」，
+    真正的换图几乎总是伴随 prompt 变化或人工在闸文件里勾「重跑」。
+    """
+    parts = []
+    for s in (sb or {}).get("shots") or []:
+        sid = s.get("shot_id")
+        vis = s.get("visual") or {}
+        if gate == "script":
+            parts.append(f"{sid}|{(s.get('script_line') or '').strip()}")
+        elif gate == "images":
+            ref = s.get("source_ref") or {}
+            parts.append(f"{sid}|{vis.get('prompt') or ''}|{ref.get('path') or ''}")
+        else:  # storyboard（以及未来新增闸的兜底：审的是画面）
+            parts.append(
+                f"{sid}|{vis.get('prompt') or ''}|"
+                + json.dumps(vis.get("shot_language") or {}, sort_keys=True, ensure_ascii=False))
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
-def mark_approved(out_dir, gate):
+def is_approved(out_dir, gate, sb=None):
+    """批准状态。传 sb 时额外要求「批的就是现在这份内容」（指纹一致）。
+
+    存量 .approved（旧格式，没有 digest 行）一律继续认——否则补丁落地那天
+    所有在途任务会被集体重新停闸。
+    """
+    p = approved_path(out_dir, gate)
+    if not os.path.exists(p):
+        return False
+    if sb is None:
+        return True
+    try:
+        with open(p, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return False
+    want = f"digest={gate_digest(gate, sb)}"
+    if not any(ln.startswith("digest=") for ln in lines):
+        return True
+    return want in lines
+
+
+def review_touched_after_approval(out_dir, gate):
+    """批准后审阅文件又被直接编辑过 = 有没人消费的修改。
+
+    这些改动只有走 --approve 才会 apply_review 回写进分镜；直接重跑管线既不会
+    生效、又会被 write_review 覆盖掉。所以宁可停下提示，也不要用旧内容跳闸。
+    """
+    rp, ap = review_path(out_dir, gate), approved_path(out_dir, gate)
+    try:
+        return os.path.getmtime(rp) > os.path.getmtime(ap)
+    except OSError:
+        return False
+
+
+def mark_approved(out_dir, gate, sb=None):
     ensure_review_dir(out_dir)
     p = approved_path(out_dir, gate)
-    open(p, "w", encoding="utf-8").write("approved\n")
+    lines = ["approved"]
+    if sb is not None:
+        lines.append(f"digest={gate_digest(gate, sb)}")
+        lines.append("at=" + time.strftime("%Y-%m-%dT%H:%M:%S"))
+    with open(p, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
     return p
 
 
@@ -322,6 +391,20 @@ def apply_review(out_dir, gate, sb):
     return sb, changes, regen, fb_items
 
 
+GATE_ORDER = ["script", "storyboard", "images"]
+
+
+def remaining_gates(gate):
+    """批准 gate 这道闸之后**还要停**的闸（逗号串；没有则空串）。
+
+    命令文本（停闸横幅 / 工作台指令 / 面板按钮）用它把闸位写明确：manual 档缺 --gate
+    时引擎会退回「三道全停」，但指令自带剩余闸位，才看得见「这次会停在哪、还要等人几次」。
+    """
+    if gate not in GATE_ORDER:
+        return ""
+    return ",".join(GATE_ORDER[GATE_ORDER.index(gate) + 1:])
+
+
 def gate_banner(out_dir, gate, sb):
     """停在闸口时给用户看的提示"""
     p = review_path(out_dir, gate)
@@ -331,8 +414,14 @@ def gate_banner(out_dir, gate, sb):
         "storyboard": "画面确认（**生图前**最后一道闸，改这里最省钱）",
         "images": "素材确认（勾选「重跑」的镜会重新生图，其余复用）",
     }.get(gate, "")
+    tail = ""
+    if remaining_gates(gate):
+        tail = (f"    后面还要停的闸已写进上面的 --gate {remaining_gates(gate)}；"
+                f"省略它则退回 manual 默认三闸全停（已批准的自动放行）\n")
     return (f"\n⏸  已停在【{gate}】确认闸（{tip}）\n"
             f"    审阅文件: {p}\n"
             f"    共 {n} 镜。编辑该文件后执行:\n"
-            f"      run_pipeline.py --storyboard <分镜> --out-dir <产物> --approve {gate}\n"
+            f"      run_pipeline.py --storyboard <分镜> --out-dir <产物> --approve {gate}"
+            + (f" --gate {remaining_gates(gate)}" if remaining_gates(gate) else "") + "\n"
+            + tail +
             f"    若无需修改，直接批准即可继续。\n")
