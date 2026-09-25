@@ -118,7 +118,7 @@ def main():
             try:
                 url, cleanup = upload_public(img, bcfg.get("upload"), bcfg.get("base_url"))
             except Exception as e:
-                print(f"  ⚠️  镜{sid}: 上传失败，退化为文生视频（{type(e).__name__}）")
+                print(f"  ⚠️降级  镜{sid}: 上传失败，退化为文生视频（{type(e).__name__}）")
         try:
             vurl = prov["fn"](prompt, image_url=url, model=model)
             dst = os.path.join(broll_dir, f"shot_{sid:03d}.mp4")

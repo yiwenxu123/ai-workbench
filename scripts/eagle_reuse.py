@@ -152,7 +152,7 @@ def main():
         path = api.get_item_file_path(item_id, best_item.get("name") or "",
                                       best_item.get("ext") or "jpg")
         if not path or not os.path.exists(path):
-            print(f"  ⚠️  镜{sid}: 命中但取不到文件（{path}）→ 仍需生图")
+            print(f"  ⚠️降级  镜{sid}: 命中但取不到文件（{path}）→ 仍需生图")
             miss += 1
             continue
 

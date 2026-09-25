@@ -22,7 +22,7 @@ def _resolve_enum(cls, name, what):
         return None
     hit = next((m for m in cls if m.name == name), None)
     if hit is None:
-        print(f"⚠️  未知{what}「{name}」，该项不加"
+        print(f"⚠️降级  未知{what}「{name}」，该项不加"
               f"（可选如：{'、'.join(m.name for m in list(cls)[:6])}…）", file=sys.stderr)
     return hit
 
@@ -178,7 +178,7 @@ def create_draft(
                  "4:3": (1440, 1080)}
     W, H = AR_CANVAS.get(aspect_ratio, (1080, 1920))
     if aspect_ratio not in AR_CANVAS:
-        print(f"⚠️  未内置比例 {aspect_ratio}，回退 9:16（已内置：{list(AR_CANVAS)}）")
+        print(f"⚠️降级  未内置比例 {aspect_ratio}，回退 9:16（已内置：{list(AR_CANVAS)}）")
     script = draft_folder.create_draft(draft_name, width=W, height=H)
     print(f"✅ 草稿已创建: {draft_name}  画布 {W}x{H}（{aspect_ratio}）")
 
@@ -337,7 +337,7 @@ def apply_subtitle_style(draft_dir: str, storyboard: dict) -> int:
         from storyboard_schema import subtitle_style as _sts, shot_scale as _scale
         st = _sts(storyboard or {})
     except ImportError:
-        print("⚠️  未找到 storyboard_schema，跳过字幕样式注入", file=sys.stderr)
+        print("⚠️降级  未找到 storyboard_schema，跳过字幕样式注入", file=sys.stderr)
         return 0
 
     with open(info_json, "r", encoding="utf-8") as f:
@@ -507,7 +507,7 @@ def main():
             from storyboard_schema import motion_style
             motion = motion_style(storyboard)
         except ImportError:
-            print("⚠️  未找到 storyboard_schema，跳过动效", file=sys.stderr)
+            print("⚠️降级  未找到 storyboard_schema，跳过动效", file=sys.stderr)
 
     # 创建草稿
     create_draft(

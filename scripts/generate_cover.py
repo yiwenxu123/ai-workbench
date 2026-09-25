@@ -53,7 +53,7 @@ def load_templates(path: str = TEMPLATES_PATH) -> dict:
             raise ValueError("模板根节点不是对象")
         return cfg
     except Exception as e:
-        print(f"⚠️  模板表读取失败（{path}）: {e}，改用内置兜底", file=sys.stderr)
+        print(f"⚠️降级  模板表读取失败（{path}）: {e}，改用内置兜底", file=sys.stderr)
         return {
             "hook": {"signals": [
                 {"id": "digit", "weight": 2, "label": "含数字", "pattern": "\\d"},

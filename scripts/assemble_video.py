@@ -168,12 +168,12 @@ def real_clip_source(shot):
         return None
     media, why = resolve_clip(rc)
     if not media:
-        print(f"⚠️  镜{shot.get('shot_id', '?')}: 实拍素材未定位（{why}），回退静帧",
+        print(f"⚠️降级  镜{shot.get('shot_id', '?')}: 实拍素材未定位（{why}），回退静帧",
               file=sys.stderr)
         return None
     native = probe_duration(media)
     if not native:
-        print(f"⚠️  镜{shot.get('shot_id', '?')}: {os.path.basename(media)} 探针失败，回退静帧",
+        print(f"⚠️降级  镜{shot.get('shot_id', '?')}: {os.path.basename(media)} 探针失败，回退静帧",
               file=sys.stderr)
         return None
     start, dur = clip_span(rc, native)

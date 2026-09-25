@@ -282,7 +282,7 @@ def tts_dashscope(text, voice_id, speed=1.0, model="qwen3-tts-flash", timing=Non
                 timing["provider"] = "dashscope"
             else:
                 # 拿不到词表不是错误：字幕退回字符比例切分，但必须让人看得见为什么
-                print("⚠️  CosyVoice 未返回词级时间戳，本镜字幕退回字符比例切分"
+                print("⚠️降级  CosyVoice 未返回词级时间戳，本镜字幕退回字符比例切分"
                       f"（模型 {model} 不在词表支持名单，或该音色未开放）", file=sys.stderr)
         return audio, round(dur, 3)
 
@@ -459,7 +459,7 @@ def img_stepfun(prompt, aspect_ratio="9:16", model="step-image-edit-2", **_):
     # edit-2 prompt 上限 512 字符：超出截断（画面关键词通常前置），避免整镜 400
     p = str(prompt or "")
     if len(p) > spec["prompt_limit"]:
-        print(f"  ⚠️  prompt {len(p)} 字超出 {mdl} 上限 "
+        print(f"  ⚠️降级  prompt {len(p)} 字超出 {mdl} 上限 "
               f"{spec['prompt_limit']}，已截断", file=sys.stderr)
         p = p[:spec["prompt_limit"]]
     size = spec["sizes"].get(aspect_ratio, spec["sizes"]["9:16"])
@@ -574,13 +574,13 @@ def load_project_config(project_id):
         # 这里按 别名/账号名/slug 反查一次。
         p = _resolve_project_config_by_alias(project_id)
         if not p:
-            print(f"⚠️  未找到项目配置（project_id={project_id}）；"
+            print(f"⚠️降级  未找到项目配置（project_id={project_id}）；"
                   f"可在 project_configs/*.json 的 aliases 里登记该 ID", file=sys.stderr)
             return {}
     try:
         return json.load(open(p, encoding="utf-8"))
     except Exception as e:
-        print(f"⚠️  项目配置解析失败 {p}: {e}", file=sys.stderr)
+        print(f"⚠️降级  项目配置解析失败 {p}: {e}", file=sys.stderr)
         return {}
 
 
@@ -762,10 +762,10 @@ def load_model_catalog(force=False):
         with open(CATALOG_PATH, encoding="utf-8") as f:
             _model_catalog = json.load(f)
     except FileNotFoundError:
-        print(f"⚠️  未找到模型目录 {CATALOG_PATH}，仅用内置 provider", file=sys.stderr)
+        print(f"⚠️降级  未找到模型目录 {CATALOG_PATH}，仅用内置 provider", file=sys.stderr)
         _model_catalog = {}
     except Exception as e:
-        print(f"⚠️  模型目录解析失败: {e}", file=sys.stderr)
+        print(f"⚠️降级  模型目录解析失败: {e}", file=sys.stderr)
         _model_catalog = {}
     return _model_catalog
 
@@ -980,11 +980,11 @@ def resolve_tts_speed(cli_speed=None, storyboard=None, project_cfg=None):
     try:
         v = float(raw)
     except (TypeError, ValueError):
-        print(f"⚠️  语速 {raw!r} 不是数字（{src}），退回 1.0", file=sys.stderr)
+        print(f"⚠️降级  语速 {raw!r} 不是数字（{src}），退回 1.0", file=sys.stderr)
         return 1.0, "默认 1.0（配置值非法）"
     clamped = max(0.5, min(2.0, v))
     if clamped != v:
-        print(f"⚠️  语速 {v} 超出 0.5~2.0（{src}），按 {clamped} 执行", file=sys.stderr)
+        print(f"⚠️降级  语速 {v} 超出 0.5~2.0（{src}），按 {clamped} 执行", file=sys.stderr)
     return round(clamped, 3), src
 
 

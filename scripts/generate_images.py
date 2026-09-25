@@ -203,7 +203,7 @@ def main():
         api_key = load_api_key(args.api_key)
         if not api_key:
             if len(chain_names) > 1:
-                print(f"⚠️  provider={prov_name} 的 API key 缺失，依赖降级链继续：{chain_names}",
+                print(f"⚠️降级  provider={prov_name} 的 API key 缺失，依赖降级链继续：{chain_names}",
                       file=sys.stderr)
             else:
                 print(f"❌ provider={prov_name} 需要 API key（~/.dsh/secrets/*.env）",
@@ -233,7 +233,7 @@ def main():
         presets.update({str(k): str(v) for k, v in custom.items()})
     style_prefix = presets.get(preset_name, "")
     if preset_name not in presets:
-        print(f"⚠️  未内置风格预设 {preset_name!r}，按无前缀处理"
+        print(f"⚠️降级  未内置风格预设 {preset_name!r}，按无前缀处理"
               f"（已内置：{list(presets)}；可在项目配置 image.style_presets 扩展）", file=sys.stderr)
 
     out_dir = os.path.expanduser(args.output_dir)
@@ -362,7 +362,7 @@ def main():
                                 note=f"degrade-fail[{cls}]: {str(e)[:80]}")
                 except Exception:
                     pass
-                print(f"  ⚠️  镜{sid}: {entry['name']} 失败({cls})，降级 → {chain[idx + 1]['name']}",
+                print(f"  ⚠️降级  镜{sid}: {entry['name']} 失败({cls})，降级 → {chain[idx + 1]['name']}",
                       file=sys.stderr)
         return (sid, False, None, 0, prompt, "链耗尽（不应到达）", prov_name, args.model)
 

@@ -170,7 +170,7 @@ def main():
                     or v.startswith(("cosyvoice-", "qwen-audio-", "qwen3-tts-vc")))
         return True                                   # minimax：系统音色或克隆 voice_id
     if not _voice_ok(prov_name, voice_id):
-        print(f"⚠️  音色 {voice_id!r} 不适用于 {prov_name} provider，改用 "
+        print(f"⚠️降级  音色 {voice_id!r} 不适用于 {prov_name} provider，改用 "
               f"{prov['default_voice']}（可用：{prov['voices_hint']}）", file=sys.stderr)
         voice_id, src = prov["default_voice"], "provider 默认（错配回退）"
 
@@ -268,7 +268,7 @@ def main():
                                 note=f"degrade-fail[{cls}]: {str(e)[:80]}")
                 except Exception:
                     pass
-                print(f"  ⚠️  镜{shot.get('shot_id', i)}: {cand['name']} 失败({cls})，"
+                print(f"  ⚠️降级  镜{shot.get('shot_id', i)}: {cand['name']} 失败({cls})，"
                       f"降级 → {chain[ci + 1]['name']}", file=sys.stderr)
         if not entry:
             continue

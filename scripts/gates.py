@@ -241,7 +241,7 @@ def fetch_pending_feedback(video_id, gate, out_dir):
                 add([i for i in (gf.get("items") or []) if i.get("text")])
             api_ok = True
         except Exception as e:
-            print(f"⚠️  意见拉取失败（内容中心不可达，只用本地镜像）: "
+            print(f"⚠️降级  意见拉取失败（内容中心不可达，只用本地镜像）: "
                   f"{type(e).__name__}: {str(e)[:100]}", file=sys.stderr)
     add(read_mirror_feedback(out_dir, gate))
     if api_ok:

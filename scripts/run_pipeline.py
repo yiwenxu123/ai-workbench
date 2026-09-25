@@ -91,7 +91,11 @@ def stage_title(name: str) -> str:
 # ══ 跨仓机器可读事件（#4）══
 # 控制台的 ▶ N/M 中文横幅是给人看的，措辞可随意演进；DSH 面板执行器以前靠正则扫这些
 # 中文文案推断「跑到第几阶段/是不是停在闸上」，改一条文案就静默断掉跨仓契约。
-# 契约只有两样：本函数打出的事件行（字段名不许改，可加）+ 退出码（0/2/3/4/5/6）。
+# 契约只有两样：本函数打出的事件行（字段名不许改，可加）+ 退出码（0/2/3/4/5/6/7）。
+# ══ 人读告警分两级（机器读的见下面 contract）══
+# ⚠️降级 = 没做成 A 于是改用 B / 退回默认值：产物继续但与你的配置不一致，
+#          「出来的和我要的不一样」就 grep '⚠️降级'；不带标签的 ⚠️ = 某步失败/跳过但继续。
+# ❌ 一定伴随退出码（停下），不在这两级里。
 EVENT_PREFIX = "#VIDEO-EVENT# "
 
 
@@ -141,7 +145,7 @@ def fetch_content_type_catalog(api_base: str, timeout: int = 5) -> dict:
         _write_catalog_cache(types)
         return {t.get("key"): t for t in types if isinstance(t, dict) and t.get("key")}
     except Exception as e:
-        print(f"⚠️  类型目录拉取失败（{type(e).__name__}: {str(e)[:100]}），改用上次成功的缓存",
+        print(f"⚠️降级  类型目录拉取失败（{type(e).__name__}: {str(e)[:100]}），改用上次成功的缓存",
               file=sys.stderr)
     try:
         with open(CATALOG_CACHE, encoding="utf-8") as f:
@@ -321,10 +325,10 @@ def main():
                   f"   本次未跑任何阶段，不产生费用。", file=sys.stderr)
             sys.exit(EXIT_TYPE_CATALOG)
         if type_catalog:
-            print(f"⚠️  口播不在内容中心类型目录（允许 {sorted(type_catalog)}），按默认行为继续",
+            print(f"⚠️降级  口播不在内容中心类型目录（允许 {sorted(type_catalog)}），按默认行为继续",
                   file=sys.stderr)
         else:
-            print("⚠️  类型目录不可达且无缓存：按口播默认（全阶段）行为继续", file=sys.stderr)
+            print("⚠️降级  类型目录不可达且无缓存：按口播默认（全阶段）行为继续", file=sys.stderr)
     # 类型侧的「要不要配音/字幕」以目录为准（而不是「本次跑没跑该阶段」）：
     # `--only qc` 复验时 stages 只有 qc，若按 stages 推断就会把口播任务的配音/字幕检查全跳过。
     expect_voiceover = bool(cprofile.get("voiceover", True))
@@ -683,7 +687,7 @@ def main():
                         _r.read()
                     print("📡 闸文件意见已同步到内容中心（记录为准，regen 消费后统一清空）")
                 except Exception as _e:
-                    print(f"⚠️  意见同步内容中心失败（只用本地镜像继续）: "
+                    print(f"⚠️降级  意见同步内容中心失败（只用本地镜像继续）: "
                           f"{type(_e).__name__}: {str(_e)[:100]}", file=sys.stderr)
             if pend:
                 print(f"🔁 【{g}】闸有 {len(pend)} 条待处理意见，先重生成再批准…")

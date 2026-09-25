@@ -274,7 +274,7 @@ def main():
         print(f"    明细: {out_path}", file=sys.stderr)
     elif report.get("degraded"):
         # 可能是本次降级，也可能是 titles 补检合并进来的历史降级 —— 口径一致：不算通过
-        print(f"⚠️  合规检查降级（{err_msg or '历史降级（见 compliance.json）'}）："
+        print(f"⚠️降级  合规检查降级（{err_msg or '历史降级（见 compliance.json）'}）："
               f"**未完成检查**，不阻断管线，但任务不会被标记为「已过合规」，发布仍会被拦",
               file=sys.stderr)
     else:
