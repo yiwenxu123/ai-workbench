@@ -748,8 +748,9 @@ def main():
         if not gates.is_approved(out, gate):
             rp = gates.write_review(out, gate, sb, img_dir)
             print(gates.gate_banner(out, gate, sb))
-            report(f"gate_{gate}", note=f"停在人工确认闸: {gate}（审阅文件 {rp}）")
+            # 事件先行：「停在闸上」是本地事实，哪怕随后回写被拒（exit 7）也要看得见
             contract("gate_pause", gate=gate, reason="unapproved", review=str(rp))
+            report(f"gate_{gate}", note=f"停在人工确认闸: {gate}（审阅文件 {rp}）")
             sys.exit(0)
         note = ""
         reason = ""
@@ -770,8 +771,8 @@ def main():
         else:
             print(f"✅【{gate}】闸已通过")
             return
-        report(f"gate_{gate}", note=note)
         contract("gate_pause", gate=gate, reason=reason, review=str(rp))
+        report(f"gate_{gate}", note=note)
         sys.exit(0)
 
     check_gate("script", "voiceover")
