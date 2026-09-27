@@ -234,6 +234,16 @@ def fetch_pending_feedback(video_id, gate, out_dir):
             tok = os.environ.get("CONTENT_OPS_API_TOKEN") or os.environ.get("AGENT_API_KEY")
             if tok:
                 req.add_header("Authorization", f"Bearer {tok}")
+            else:
+                # 生产化鉴权（2026-09-27）：回退回调密钥文件
+                try:
+                    with open(os.path.expanduser("~/.config/content-ops/callback-token"),
+                              encoding="utf-8") as _f:
+                        _cb = _f.read().strip()
+                    if _cb:
+                        req.add_header("x-callback-token", _cb)
+                except OSError:
+                    pass
             with urllib.request.urlopen(req, timeout=8) as r:
                 d = (json.loads(r.read().decode("utf-8")) or {}).get("data") or {}
             gf = (d.get("metadata") or {}).get("gate_feedback") or {}

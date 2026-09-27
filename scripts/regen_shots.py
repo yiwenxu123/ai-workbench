@@ -35,11 +35,23 @@ def _base():
     return os.environ.get("CONTENT_OPS_API_BASE", API_BASE_DEFAULT).rstrip("/")
 
 
+CALLBACK_TOKEN_FILE = os.path.expanduser("~/.config/content-ops/callback-token")
+
+
 def _headers():
     h = {"Content-Type": "application/json"}
     tok = os.environ.get("CONTENT_OPS_API_TOKEN") or os.environ.get("AGENT_API_KEY")
     if tok:
         h["Authorization"] = f"Bearer {tok}"
+    else:
+        # 生产化鉴权（2026-09-27）：无 Bearer key 时用引擎回调密钥（与 run_pipeline 同源）
+        try:
+            with open(CALLBACK_TOKEN_FILE, encoding="utf-8") as f:
+                cb = f.read().strip()
+            if cb:
+                h["x-callback-token"] = cb
+        except OSError:
+            pass
     return h
 
 

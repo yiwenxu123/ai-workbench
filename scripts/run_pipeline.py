@@ -137,7 +137,8 @@ def fetch_content_type_catalog(api_base: str, timeout: int = 5) -> dict:
     import urllib.request
     url = api_base.rstrip("/") + "/videos/content-types"
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
+        req = urllib.request.Request(url, headers=center_headers())
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
         types = ((payload or {}).get("data") or {}).get("types")
         if not types:
@@ -184,6 +185,26 @@ def callback_token() -> str:
             return f.read().strip()
     except OSError:
         return ""
+
+
+def center_headers(extra: dict | None = None) -> dict:
+    """调内容中心的统一鉴权头（2026-09-27 生产化鉴权后必需）。
+
+    优先级：CONTENT_OPS_API_TOKEN/AGENT_API_KEY（Bearer，归属用户由中心按 key 解析）
+    → 回调共享密钥（x-callback-token，机器主体 engine）。两者都没有时只给 Content-Type，
+    由中心按其配置决定是否拒绝（关掉 dev 旁路后会 401）。
+    """
+    h = {"Content-Type": "application/json"}
+    bearer = (os.environ.get("CONTENT_OPS_API_TOKEN") or os.environ.get("AGENT_API_KEY") or "").strip()
+    if bearer:
+        h["Authorization"] = f"Bearer {bearer}"
+    else:
+        tok = callback_token()
+        if tok:
+            h["x-callback-token"] = tok
+    if extra:
+        h.update(extra)
+    return h
 
 
 def summarize_compliance(cj: dict) -> dict:
@@ -679,10 +700,7 @@ def main():
                                            "http://localhost:3002/api/v1").rstrip("/")
                     _rq = _ur.Request(f"{_base}/videos/{args.video_id}/feedback",
                                       data=_sync_fb, method="POST",
-                                      headers={"Content-Type": "application/json"})
-                    _tok = os.environ.get("CONTENT_OPS_API_TOKEN") or os.environ.get("AGENT_API_KEY")
-                    if _tok:
-                        _rq.add_header("Authorization", f"Bearer {_tok}")
+                                      headers=center_headers())
                     with _ur.urlopen(_rq, timeout=8) as _r:
                         _r.read()
                     print("📡 闸文件意见已同步到内容中心（记录为准，regen 消费后统一清空）")

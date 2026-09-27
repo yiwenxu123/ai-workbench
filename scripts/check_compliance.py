@@ -150,12 +150,30 @@ def build_texts(sb: dict, out_dir: str, srt_path: str, titles_only: bool = False
     return texts, sources
 
 
+def _center_headers() -> dict:
+    """内容中心鉴权头（2026-09-27 生产化鉴权）：Bearer key 优先，回退引擎回调密钥文件。"""
+    h = {"Content-Type": "application/json"}
+    tok = (os.environ.get("CONTENT_OPS_API_TOKEN") or os.environ.get("AGENT_API_KEY") or "").strip()
+    if tok:
+        h["Authorization"] = f"Bearer {tok}"
+    else:
+        try:
+            with open(os.path.expanduser("~/.config/content-ops/callback-token"),
+                      encoding="utf-8") as f:
+                cb = f.read().strip()
+            if cb:
+                h["x-callback-token"] = cb
+        except OSError:
+            pass
+    return h
+
+
 def call_api(api_base: str, texts: list, block_severities: list, timeout: int) -> dict:
     """调内容中心合规端点。返回 result dict；失败抛异常。"""
     url = api_base.rstrip("/") + "/audit/compliance"
     body = json.dumps({"texts": texts, "blockSeverities": block_severities}).encode("utf-8")
     req = urllib.request.Request(
-        url, data=body, headers={"Content-Type": "application/json"}, method="POST"
+        url, data=body, headers=_center_headers(), method="POST"
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         payload = json.loads(resp.read().decode("utf-8"))

@@ -89,9 +89,28 @@ def dir_size(path):
     return total
 
 
+def _center_headers():
+    """内容中心鉴权头（2026-09-27 生产化鉴权）：Bearer key 优先，回退引擎回调密钥文件。"""
+    h = {"Content-Type": "application/json"}
+    tok = (os.environ.get("CONTENT_OPS_API_TOKEN") or os.environ.get("AGENT_API_KEY") or "").strip()
+    if tok:
+        h["Authorization"] = f"Bearer {tok}"
+    else:
+        try:
+            with open(os.path.expanduser("~/.config/content-ops/callback-token"),
+                      encoding="utf-8") as f:
+                cb = f.read().strip()
+            if cb:
+                h["x-callback-token"] = cb
+        except OSError:
+            pass
+    return h
+
+
 def fetch_videos():
     try:
-        with urllib.request.urlopen(f"{BASE}/videos?limit=500", timeout=10) as f:
+        req = urllib.request.Request(f"{BASE}/videos?limit=500", headers=_center_headers())
+        with urllib.request.urlopen(req, timeout=10) as f:
             return (json.load(f) or {}).get("data") or []
     except Exception as e:
         print(f"⚠️  读取任务列表失败（{type(e).__name__}: {e}）——"
