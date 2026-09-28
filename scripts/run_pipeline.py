@@ -507,13 +507,13 @@ def main():
         if fail is not None:
             body["fail"] = fail
         body.update(extra)
-        headers = {"Content-Type": "application/json"}
-        tok = callback_token()
-        if tok:
-            headers["x-callback-token"] = tok
-        elif not _no_token_warned:
+        # 鉴权头与 center_headers 同一优先级（Bearer → 回调令牌）：
+        # 只配 AGENT_API_KEY 的环境以前会误报「未找到回写 token」并停机（审查 P1-3）。
+        headers = center_headers()
+        if "Authorization" not in headers and "x-callback-token" not in headers and not _no_token_warned:
             _no_token_warned.append(1)
-            print(f"⚠️  未找到回写 token（env VIDEO_CALLBACK_TOKEN 或 {CALLBACK_TOKEN_FILE}）："
+            print(f"⚠️  未找到回写 token（env CONTENT_OPS_API_TOKEN/AGENT_API_KEY、"
+                  f"VIDEO_CALLBACK_TOKEN 或 {CALLBACK_TOKEN_FILE}）："
                   f"内容中心一旦要求鉴权，本次所有进度都会丢。", file=sys.stderr)
         try:
             req = urllib.request.Request(
@@ -531,7 +531,13 @@ def main():
                       f"   加 --only-missing 续跑即可。", file=sys.stderr)
                 contract("callback_rejected", stage=stage, http=e.code)
                 sys.exit(EXIT_CALLBACK_REJECTED)
-            print(f"⚠️  进度回写被拒（HTTP {e.code}，不影响管线继续）: {str(e)[:120]}",
+            # 400 等 4xx 的响应 body 带服务端指引（如 out_dir 白名单合法根），
+            # 只打 str(e) 会丢掉这段——读出来给用户（审查 P1-3）。
+            try:
+                detail = e.read().decode("utf-8", "replace")[:200]
+            except Exception:
+                detail = ""
+            print(f"⚠️  进度回写被拒（HTTP {e.code}，不影响管线继续）: {detail or str(e)[:120]}",
                   file=sys.stderr)
         except Exception as e:
             print(f"⚠️  进度回写不通（内容中心可能在重启，不影响管线）: "
